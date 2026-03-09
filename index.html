@@ -220,26 +220,47 @@
         }).join('');
     }
 
-    // CALENDARIO - directo a TheSportsDB (sin Render)
+    // CALENDARIO - usa eventsround.php para traer jornada completa
+    function jornadaActualGMT6() {
+        // Fecha actual en GMT-6
+        const ahora = new Date(new Date().getTime() - 6 * 60 * 60 * 1000);
+        const mes = ahora.getUTCMonth(); // 0=ene
+        // Clausura arranca ~enero jornada 1, cada semana es una jornada
+        // Calculamos semanas desde el 10 de enero 2026
+        const inicio = new Date('2026-01-10T00:00:00Z');
+        const diffMs = ahora.getTime() - inicio.getTime();
+        const diffSemanas = Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000));
+        const jornada = Math.min(Math.max(diffSemanas + 1, 1), 17);
+        return jornada;
+    }
+
+    async function fetchJornada(round) {
+        const url = 'https://www.thesportsdb.com/api/v1/json/123/eventsround.php?id=4350&r=' + round + '&s=2025-2026';
+        const response = await fetch(url);
+        const data = await response.json();
+        return data.events || [];
+    }
+
     async function cargarCalendario() {
         const div = document.getElementById('seccion-calendario');
         div.innerHTML = '<p style="color:#aaa;">Cargando...</p>';
 
         try {
-            const endpoint = vistaCalendario === 'proximos'
-                ? 'https://www.thesportsdb.com/api/v1/json/123/eventsnextleague.php?id=4350'
-                : 'https://www.thesportsdb.com/api/v1/json/123/eventspastleague.php?id=4350';
+            const jornadaActual = jornadaActualGMT6();
+            const round = vistaCalendario === 'proximos' ? jornadaActual : jornadaActual - 1;
+            const titulo = vistaCalendario === 'proximos'
+                ? 'Jornada ' + jornadaActual
+                : 'Jornada ' + (jornadaActual - 1);
 
-            const response = await fetch(endpoint);
-            const data = await response.json();
-            const eventos = data.events || [];
+            const eventos = await fetchJornada(round);
 
             if (eventos.length === 0) {
-                div.innerHTML = '<p style="color:#aaa;">No hay partidos disponibles.</p>';
+                div.innerHTML = '<p style="color:#aaa;">No hay partidos para la ' + titulo + '.</p>';
                 return;
             }
 
-            let html = '<div class="tabla-container"><table style="width:100%; border-collapse:collapse; color:white;">'
+            let html = '<p style="color:#aaa; margin-bottom:8px;">' + titulo + '</p>'
+                     + '<div class="tabla-container"><table style="width:100%; border-collapse:collapse; color:white;">'
                      + '<thead><tr style="background:#333;">'
                      + '<th style="padding:8px; border:1px solid #555;">Fecha</th>'
                      + '<th style="padding:8px; border:1px solid #555;">Local</th>'
@@ -247,18 +268,29 @@
                      + '<th style="padding:8px; border:1px solid #555;">Visitante</th>'
                      + '</tr></thead><tbody>';
 
+            // Ordenar por fecha
+            eventos.sort(function(a, b) {
+                return new Date(a.dateEvent + 'T' + (a.strTime || '00:00:00')) 
+                     - new Date(b.dateEvent + 'T' + (b.strTime || '00:00:00'));
+            });
+
             eventos.forEach(function(p) {
-                const d = new Date(p.dateEvent + ' ' + (p.strTime || '00:00:00'));
-                const fecha = isNaN(d.getTime()) ? p.dateEvent : d.toLocaleString('es-MX', {
-                    weekday: 'short', day: 'numeric', month: 'short'
+                // Convertir hora UTC a GMT-6
+                var fechaHora = new Date(p.dateEvent + 'T' + (p.strTime || '00:00:00') + 'Z');
+                fechaHora = new Date(fechaHora.getTime() - 6 * 60 * 60 * 1000);
+                const fecha = fechaHora.toLocaleString('es-MX', {
+                    weekday: 'short', day: 'numeric', month: 'short',
+                    hour: '2-digit', minute: '2-digit', timeZone: 'UTC'
                 });
+
                 const local  = p.strHomeTeam;
                 const visita = p.strAwayTeam;
                 let marcador;
-                if (p.intHomeScore !== null && p.intHomeScore !== '') {
+                if (p.intHomeScore !== null && p.intHomeScore !== '' && p.intHomeScore !== undefined) {
                     marcador = '<strong>' + p.intHomeScore + ' - ' + p.intAwayScore + '</strong>';
                 } else {
-                    marcador = '<span style="color:#aaa;">' + (p.strTime ? p.strTime.substring(0,5) : 'Por jugar') + '</span>';
+                    var hora = fechaHora.toLocaleString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+                    marcador = '<span style="color:#aaa;">' + hora + '</span>';
                 }
 
                 html += '<tr>'
