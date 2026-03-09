@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Liga MX Survivor</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; padding: 20px; background: #1a1a1a; color: white; }
+        .card { background: #2d2d2d; padding: 30px; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); max-width: 1200px; margin: auto; }
+        input, select { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; border: none; box-sizing: border-box; }
+        input { background: #404040; color: white; }
+        button { padding: 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        .btn-full { width: 100%; margin: 10px 0; }
+        .btn-verde { background: #00c853; color: white; }
+        .btn-verde:hover { background: #00a042; }
+        .btn-gris { background: #555; color: white; }
+        .btn-gris:hover { background: #444; }
+        .vidas { font-size: 28px; color: #ff5252; margin: 20px 0; }
+        #game-section { display: none; }
+        .hidden { display: none; }
+        .tabla-container { width: 100%; overflow-x: auto; }
+        th, td { white-space: nowrap; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>&#127942; LIGA MX <br>SURVIVOR</h1>
+
+    <!-- LOGIN -->
+    <div id="auth-section">
+        <p>Ingresa para jugar</p>
+        <input type="email" id="email" placeholder="Correo electronico">
+        <input type="password" id="password" placeholder="Contrasena">
+        <button id="btn-login" class="btn-full btn-verde">ENTRAR / REGISTRARSE</button>
+    </div>
+
+    <!-- JUEGO -->
+    <div id="game-section">
+        <p>Bienvenido: <strong id="user-display"></strong></p>
+        <div class="vidas">Vidas: <span id="vidas-count">3</span> &#10084;&#65039;</div>
+        <hr>
+
+        <p>Elige tu equipo de la Jornada</p>
+        <select id="team-select">
+            <option value="">Cargando equipos...</option>
+        </select>
+        <input type="number" id="jornada-val" placeholder="Numero de Jornada (1-17)" min="1">
+        <button id="btn-save" class="btn-full btn-verde">CONFIRMAR EQUIPO</button>
+        <p id="feedback"></p>
+
+        <hr>
+        <h3>Panel de Supervivencia</h3>
+        <div class="tabla-container">
+            <table style="width:100%; border-collapse:collapse; color:white;">
+                <thead>
+                    <tr id="header-jornadas" style="background:#333;">
+                        <th style="padding:10px; border:1px solid #555;">Usuario</th>
+                        <th style="padding:10px; border:1px solid #555;">Vidas</th>
+                    </tr>
+                </thead>
+                <tbody id="cuerpo-survivor"></tbody>
+            </table>
+        </div>
+
+        <hr style="margin:30px 0;">
+        <h3>&#128197; Partidos Liga MX</h3>
+        <div style="display:flex; gap:10px; justify-content:center; margin-bottom:15px;">
+            <button id="btn-proximos" class="btn-verde" onclick="verSemana('proximos')" style="padding:8px 20px;">Esta semana</button>
+            <button id="btn-pasados" class="btn-gris" onclick="verSemana('pasados')" style="padding:8px 20px;">Semana pasada</button>
+        </div>
+        <div id="seccion-calendario">
+            <p style="color:#aaa;">Cargando partidos...</p>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    const SB_URL = "https://povaakggggoeewgqfyot.supabase.co";
+    const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBvdmFha2dnZ2dvZWV3Z3FmeW90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxMjMzODMsImV4cCI6MjA4NzY5OTM4M30.HqtFd95Ot8P3DxjgGLIz40SuxBPJiB-9DavvcCSInHA";
+    const RENDER_URL = "https://ligamx-pjcd.onrender.com";
+
+    const supabaseClient = supabase.createClient(SB_URL, SB_KEY);
+    let userActual = null;
+    let vistaCalendario = 'proximos';
+
+    // LOGIN
+    document.getElementById('btn-login').onclick = async () => {
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value;
+        const btn = document.getElementById('btn-login');
+
+        if (!email || !password) { alert("Escribe correo y contrasena"); return; }
+
+        btn.disabled = true;
+        btn.innerText = "Cargando...";
+
+        try {
+            let { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+            if (error) {
+                const { data: regData, error: eReg } = await supabaseClient.auth.signUp({ email, password });
+                if (eReg) { alert("Error al registrar: " + eReg.message); return; }
+                if (regData && regData.user) {
+                    userActual = regData.user;
+                } else {
+                    alert("Cuenta creada. Presiona Entrar de nuevo.");
+                    return;
+                }
+            } else {
+                userActual = data.user;
+            }
+
+            iniciarJuego();
+
+        } catch (e) {
+            alert("Error: " + e.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "ENTRAR / REGISTRARSE";
+        }
+    };
+
+    // INICIAR JUEGO
+    async function iniciarJuego() {
+        document.getElementById('auth-section').classList.add('hidden');
+        document.getElementById('game-section').style.display = 'block';
+        document.getElementById('user-display').innerText = userActual.email;
+
+        // Crear perfil si no existe
+        const { data: perfilExiste } = await supabaseClient
+            .from('perfiles').select('id').eq('id', userActual.id).single();
+
+        if (!perfilExiste) {
+            await supabaseClient.from('perfiles').insert([{
+                id: userActual.id,
+                username: userActual.email,
+                vidas: 3,
+                eliminado: false
+            }]);
+        }
+
+        // Cargar vidas
+        const { data: perfil } = await supabaseClient
+            .from('perfiles').select('vidas').eq('id', userActual.id).single();
+        if (perfil) document.getElementById('vidas-count').innerText = perfil.vidas;
+
+        // Cargar equipos
+        const { data: equipos } = await supabaseClient.from('equipos_ligamx').select('*');
+        const select = document.getElementById('team-select');
+        select.innerHTML = equipos.map(e => "<option value='" + e.id + "'>" + e.nombre + "</option>").join('');
+
+        cargarTablaGlobal();
+        cargarCalendario();
+    }
+
+    // GUARDAR SELECCION
+    document.getElementById('btn-save').onclick = async () => {
+        const eqId = document.getElementById('team-select').value;
+        const jor = parseInt(document.getElementById('jornada-val').value);
+
+        if (!jor) { alert("Pon el numero de jornada"); return; }
+
+        const { error } = await supabaseClient.from('selecciones').insert([{
+            user_id: userActual.id,
+            equipo_id: eqId,
+            jornada: jor,
+            estatus: 'pendiente'
+        }]);
+
+        if (error) {
+            alert("ERROR: " + error.message + " | " + error.details);
+        } else {
+            const fb = document.getElementById('feedback');
+            fb.innerText = "Eleccion guardada!";
+            fb.style.color = "#00c853";
+            cargarTablaGlobal();
+        }
+    };
+
+    // TABLA GLOBAL
+    async function cargarTablaGlobal() {
+        const { data: perfiles } = await supabaseClient
+            .from('perfiles').select('id, username, vidas').order('vidas', { ascending: false });
+        const { data: selecciones } = await supabaseClient
+            .from('selecciones').select('*, equipos_ligamx(nombre)');
+
+        const cuerpo = document.getElementById('cuerpo-survivor');
+        const header = document.getElementById('header-jornadas');
+        const maxJornada = 17;
+
+        header.innerHTML = '<th style="padding:10px; border:1px solid #555;">Usuario</th>'
+                         + '<th style="padding:10px; border:1px solid #555;">Vidas</th>';
+        for (let i = 1; i <= maxJornada; i++) {
+            header.innerHTML += '<th style="padding:10px; border:1px solid #555;">J' + i + '</th>';
+        }
+
+        cuerpo.innerHTML = perfiles.map(function(p) {
+            let celdas = '';
+            for (let j = 1; j <= maxJornada; j++) {
+                const sel = selecciones.find(function(s) { return s.user_id === p.id && s.jornada === j; });
+                let estilo = 'background:#444;';
+                let texto = '-';
+                if (sel) {
+                    texto = (sel.equipos_ligamx && sel.equipos_ligamx.nombre) ? sel.equipos_ligamx.nombre : 'S/N';
+                    if (sel.estatus === 'fallo')        estilo = 'background:#cc0000; color:white;';
+                    else if (sel.estatus === 'acierto') estilo = 'background:#008000; color:white;';
+                    else                                estilo = 'background:#555; color:#ccc;';
+                }
+                celdas += '<td style="padding:8px; border:1px solid #555; text-align:center; ' + estilo + '">' + texto + '</td>';
+            }
+            const colorVidas = p.vidas > 0 ? '#00c853' : '#ff5252';
+            return '<tr>'
+                + '<td style="padding:8px; border:1px solid #555; font-weight:bold;">' + (p.username || 'Anon') + '</td>'
+                + '<td style="padding:8px; border:1px solid #555; text-align:center; font-weight:bold; color:' + colorVidas + '">' + p.vidas + '</td>'
+                + celdas
+                + '</tr>';
+        }).join('');
+    }
+
+    // CALENDARIO - directo a TheSportsDB (sin Render)
+    async function cargarCalendario() {
+        const div = document.getElementById('seccion-calendario');
+        div.innerHTML = '<p style="color:#aaa;">Cargando...</p>';
+
+        try {
+            const endpoint = vistaCalendario === 'proximos'
+                ? 'https://www.thesportsdb.com/api/v1/json/123/eventsnextleague.php?id=4350'
+                : 'https://www.thesportsdb.com/api/v1/json/123/eventspastleague.php?id=4350';
+
+            const response = await fetch(endpoint);
+            const data = await response.json();
+            const eventos = data.events || [];
+
+            if (eventos.length === 0) {
+                div.innerHTML = '<p style="color:#aaa;">No hay partidos disponibles.</p>';
+                return;
+            }
+
+            let html = '<div class="tabla-container"><table style="width:100%; border-collapse:collapse; color:white;">'
+                     + '<thead><tr style="background:#333;">'
+                     + '<th style="padding:8px; border:1px solid #555;">Fecha</th>'
+                     + '<th style="padding:8px; border:1px solid #555;">Local</th>'
+                     + '<th style="padding:8px; border:1px solid #555;">Marcador</th>'
+                     + '<th style="padding:8px; border:1px solid #555;">Visitante</th>'
+                     + '</tr></thead><tbody>';
+
+            eventos.forEach(function(p) {
+                const d = new Date(p.dateEvent + ' ' + (p.strTime || '00:00:00'));
+                const fecha = isNaN(d.getTime()) ? p.dateEvent : d.toLocaleString('es-MX', {
+                    weekday: 'short', day: 'numeric', month: 'short'
+                });
+                const local  = p.strHomeTeam;
+                const visita = p.strAwayTeam;
+                let marcador;
+                if (p.intHomeScore !== null && p.intHomeScore !== '') {
+                    marcador = '<strong>' + p.intHomeScore + ' - ' + p.intAwayScore + '</strong>';
+                } else {
+                    marcador = '<span style="color:#aaa;">' + (p.strTime ? p.strTime.substring(0,5) : 'Por jugar') + '</span>';
+                }
+
+                html += '<tr>'
+                      + '<td style="padding:8px; border:1px solid #555; font-size:13px;">' + fecha + '</td>'
+                      + '<td style="padding:8px; border:1px solid #555;">' + local + '</td>'
+                      + '<td style="padding:8px; border:1px solid #555; text-align:center;">' + marcador + '</td>'
+                      + '<td style="padding:8px; border:1px solid #555;">' + visita + '</td>'
+                      + '</tr>';
+            });
+
+            html += '</tbody></table></div>';
+            div.innerHTML = html;
+
+        } catch (e) {
+            div.innerHTML = '<p style="color:#ff5252;">Error al cargar partidos: ' + e.message + '</p>';
+            console.error(e);
+        }
+    }
+
+    function verSemana(tipo) {
+        vistaCalendario = tipo;
+        document.getElementById('btn-proximos').className = tipo === 'proximos' ? 'btn-verde' : 'btn-gris';
+        document.getElementById('btn-pasados').className  = tipo === 'pasados'  ? 'btn-verde' : 'btn-gris';
+        cargarCalendario();
+    }
+
+</script>
+</body>
+</html>
