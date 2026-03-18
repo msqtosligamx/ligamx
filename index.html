@@ -352,15 +352,14 @@
             // strTimestamp viene en UTC
             // Restamos 6 horas fijas (GMT-6, hora de México sin verano)
             var fechaUTC = new Date(p.strTimestamp);
-            var fechaGMT6 = new Date(fechaUTC.getTime() - 6 * 60 * 60 * 1000);
 
             var dias = ['dom','lun','mar','mié','jue','vie','sáb'];
             var meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-            var dia = dias[fechaGMT6.getUTCDay()];
-            var numDia = fechaGMT6.getUTCDate();
-            var mes = meses[fechaGMT6.getUTCMonth()];
-            var hh = String(fechaGMT6.getUTCHours()).padStart(2,'0');
-            var mm = String(fechaGMT6.getUTCMinutes()).padStart(2,'0');
+            var dia = dias[fechaUTC.getUTCDay()];
+            var numDia = fechaUTC.getUTCDate();
+            var mes = meses[fechaUTC.getUTCMonth()];
+            var hh = String(fechaUTC.getUTCHours()).padStart(2,'0');
+            var mm = String(fechaUTC.getUTCMinutes()).padStart(2,'0');
             var fecha = dia + ' ' + numDia + ' ' + mes + ', ' + hh + ':' + mm;
             var hora  = hh + ':' + mm;
 
