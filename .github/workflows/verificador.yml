@@ -1,0 +1,27 @@
+name: Verificador Liga MX
+
+on:
+  schedule:
+    - cron: '0 12 * * 1'  # Lunes 6am GMT-6 (12pm UTC)
+  workflow_dispatch:        # También permite correrlo manualmente desde GitHub
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v3
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependencias
+        run: pip install supabase requests
+
+      - name: Correr verificador
+        run: python verificador.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
