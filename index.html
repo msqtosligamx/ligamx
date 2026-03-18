@@ -349,27 +349,19 @@
                  + '</tr></thead><tbody>';
 
         eventos.forEach(function(p) {
-            // Usamos dateEventLocal y strTimeLocal que ya vienen en hora de México
-            var diasSemana = ['dom','lun','mar','mié','jue','vie','sáb'];
+            // strTimestamp viene en UTC, México siempre es GMT-6 (no cambia horario)
+            var fechaUTC = new Date(p.strTimestamp);
+            var fechaGMT6 = new Date(fechaUTC.getTime() - 6 * 60 * 60 * 1000);
+
+            var dias  = ['dom','lun','mar','mié','jue','vie','sáb'];
             var meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-
-            // Construir fecha local sin conversión de zona horaria
-            var partesFecha = (p.dateEventLocal || p.dateEvent).split('-');
-            var fechaLocal = new Date(
-                parseInt(partesFecha[0]),
-                parseInt(partesFecha[1]) - 1,
-                parseInt(partesFecha[2])
-            );
-            var dia    = diasSemana[fechaLocal.getDay()];
-            var numDia = fechaLocal.getDate();
-            var mes    = meses[fechaLocal.getMonth()];
-
-            // strTimeLocal ya viene en horario de México (incluye horario de verano)
-            var horaLocal = p.strTimeLocal || p.strTime || '00:00:00';
-            var hh = horaLocal.substring(0, 2);
-            var mm = horaLocal.substring(3, 5);
-            var hora  = hh + ':' + mm;
-            var fecha = dia + ' ' + numDia + ' ' + mes + ', ' + hora;
+            var dia    = dias[fechaGMT6.getUTCDay()];
+            var numDia = fechaGMT6.getUTCDate();
+            var mes    = meses[fechaGMT6.getUTCMonth()];
+            var hh     = String(fechaGMT6.getUTCHours()).padStart(2,'0');
+            var mm     = String(fechaGMT6.getUTCMinutes()).padStart(2,'0');
+            var hora   = hh + ':' + mm;
+            var fecha  = dia + ' ' + numDia + ' ' + mes + ', ' + hora;
 
             var local  = p.strHomeTeam;
             var visita = p.strAwayTeam;
