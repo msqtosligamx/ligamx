@@ -43,10 +43,10 @@
         <hr>
 
         <p>Elige tu equipo de la Jornada</p>
+        <p id="jornada-label" style="color:#aaa; margin:5px 0;">Detectando jornada...</p>
         <select id="team-select">
             <option value="">Cargando equipos...</option>
         </select>
-        <input type="number" id="jornada-val" placeholder="Numero de Jornada (1-17)" min="1">
         <button id="btn-save" class="btn-full btn-verde">CONFIRMAR EQUIPO</button>
         <p id="feedback"></p>
 
@@ -66,12 +66,24 @@
 
         <hr style="margin:30px 0;">
         <h3>&#128197; Partidos Liga MX</h3>
-        <div style="display:flex; gap:10px; justify-content:center; margin-bottom:15px;">
-            <button id="btn-proximos" class="btn-verde" onclick="verSemana('proximos')" style="padding:8px 20px;">Esta semana</button>
+        <div style="display:flex; gap:10px; justify-content:center; margin-bottom:15px; flex-wrap:wrap;">
             <button id="btn-pasados" class="btn-gris" onclick="verSemana('pasados')" style="padding:8px 20px;">Semana pasada</button>
+            <button id="btn-proximos" class="btn-verde" onclick="verSemana('proximos')" style="padding:8px 20px;">Esta semana</button>
+            <button id="btn-siguiente" class="btn-gris" onclick="verSemana('siguiente')" style="padding:8px 20px;">Próxima semana</button>
         </div>
         <div id="seccion-calendario">
             <p style="color:#aaa;">Cargando partidos...</p>
+        </div>
+
+        <!-- SECCIÓN ADMIN - solo visible para administrador -->
+        <div id="admin-section" style="display:none; margin-top:30px; border-top: 2px solid #ff5252; padding-top:20px;">
+            <h3 style="color:#ff5252;">⚙️ Panel Admin</h3>
+            <p style="color:#aaa; font-size:13px;">Ejecuta el verificador manualmente cuando una jornada ya terminó.</p>
+            <button id="btn-verificar" class="btn-full" style="background:#ff5252; color:white; margin-bottom:10px;"
+                onclick="correrVerificador()">
+                ▶ CORRER VERIFICADOR AHORA
+            </button>
+            <p id="admin-feedback" style="color:#aaa;"></p>
         </div>
 
     </div>
@@ -154,19 +166,76 @@
 
         cargarTablaGlobal();
         cargarCalendario();
+        detectarJornadaSiguiente();
+        mostrarAdminSiAplica();
+    }
+
+    // JORNADA SIGUIENTE - se detecta automáticamente
+    var jornadaSiguiente = null;
+
+    async function detectarJornadaSiguiente() {
+        var roundActual = await detectarRoundActual();
+        jornadaSiguiente = roundActual + 1;
+
+        var label = document.getElementById('jornada-label');
+        var btnSave = document.getElementById('btn-save');
+        var fb = document.getElementById('feedback');
+
+        label.innerText = 'Jornada ' + jornadaSiguiente + ' - Clausura 2026';
+        label.style.color = '#00c853';
+        label.style.fontWeight = 'bold';
+        label.style.fontSize = '18px';
+
+        // Verificar si ya eligió para esta jornada
+        var { data: yaExiste } = await supabaseClient
+            .from('selecciones')
+            .select('id, equipos_ligamx(nombre)')
+            .eq('user_id', userActual.id)
+            .eq('jornada', jornadaSiguiente)
+            .single();
+
+        if (yaExiste) {
+            var nombreEquipo = yaExiste.equipos_ligamx ? yaExiste.equipos_ligamx.nombre : 'tu equipo';
+            fb.innerText = 'Ya elegiste ' + nombreEquipo + ' para la Jornada ' + jornadaSiguiente + '.';
+            fb.style.color = '#aaa';
+            btnSave.disabled = true;
+            btnSave.style.background = '#555';
+            btnSave.style.cursor = 'not-allowed';
+            document.getElementById('team-select').disabled = true;
+        } else {
+            btnSave.disabled = false;
+            btnSave.style.background = '#00c853';
+            btnSave.style.cursor = 'pointer';
+            document.getElementById('team-select').disabled = false;
+        }
     }
 
     // GUARDAR SELECCION
     document.getElementById('btn-save').onclick = async () => {
         const eqId = document.getElementById('team-select').value;
-        const jor = parseInt(document.getElementById('jornada-val').value);
 
-        if (!jor) { alert("Pon el numero de jornada"); return; }
+        if (!jornadaSiguiente) { alert("Espera, detectando jornada..."); return; }
+        if (!eqId) { alert("Selecciona un equipo"); return; }
+
+        // Verificar si ya usó este equipo en una jornada anterior
+        const { data: equipoRepetido } = await supabaseClient
+            .from('selecciones')
+            .select('jornada')
+            .eq('user_id', userActual.id)
+            .eq('equipo_id', eqId)
+            .single();
+
+        if (equipoRepetido) {
+            const fb = document.getElementById('feedback');
+            fb.innerText = "Ya usaste ese equipo en la Jornada " + equipoRepetido.jornada + ". Elige otro.";
+            fb.style.color = "#ff5252";
+            return;
+        }
 
         const { error } = await supabaseClient.from('selecciones').insert([{
             user_id: userActual.id,
             equipo_id: eqId,
-            jornada: jor,
+            jornada: jornadaSiguiente,
             estatus: 'pendiente'
         }]);
 
@@ -174,8 +243,13 @@
             alert("ERROR: " + error.message + " | " + error.details);
         } else {
             const fb = document.getElementById('feedback');
-            fb.innerText = "Eleccion guardada!";
+            fb.innerText = "Eleccion guardada para la Jornada " + jornadaSiguiente + "!";
             fb.style.color = "#00c853";
+            // Bloquear el botón después de guardar
+            document.getElementById('btn-save').disabled = true;
+            document.getElementById('btn-save').style.background = '#555';
+            document.getElementById('btn-save').style.cursor = 'not-allowed';
+            document.getElementById('team-select').disabled = true;
             cargarTablaGlobal();
         }
     };
@@ -220,39 +294,52 @@
         }).join('');
     }
 
-    // CALENDARIO - consulta round actual directo de la API
-    async function obtenerRoundActual() {
-        // Consulta la info de la liga para saber el round actual
-        const url = 'https://www.thesportsdb.com/api/v1/json/123/lookupleague.php?id=4350';
-        const response = await fetch(url);
-        const data = await response.json();
-        const liga = data.leagues && data.leagues[0];
-        if (liga && liga.intCurrentSeason) {
-            // intRound viene en algunos endpoints, si no lo tiene usamos strCurrentSeason
-            return parseInt(liga.intRound || 10);
-        }
-        return 10; // fallback
-    }
+    // CALENDARIO
+    // TheSportsDB reutiliza el mismo intRound para Apertura y Clausura
+    // La diferencia es el año: Apertura=2025, Clausura=2026
+    // Filtramos por año en dateEvent para mostrar solo los del torneo correcto
 
     async function fetchJornada(round) {
-        const url = 'https://www.thesportsdb.com/api/v1/json/123/eventsround.php?id=4350&r=' + round + '&s=2025-2026';
-        const response = await fetch(url);
-        const data = await response.json();
-        return data.events || [];
+        var url = 'https://www.thesportsdb.com/api/v1/json/123/eventsround.php?id=4350&r=' + round + '&s=2025-2026';
+        var response = await fetch(url);
+        var data = await response.json();
+        var todos = data.events || [];
+        // Solo partidos de 2026 (Clausura)
+        return todos.filter(function(e) { return e.dateEvent && e.dateEvent.startsWith('2026'); });
+    }
+
+    // Detectar jornada actual buscando el round que tenga partidos en 2026
+    // y cuya fecha más reciente sea <= hoy GMT-6
+    async function detectarRoundActual() {
+        var ahoraGMT6 = new Date(new Date().getTime() - 6 * 60 * 60 * 1000);
+        var roundActual = 1;
+        // Probamos rounds del 1 al 17 buscando el más reciente con partidos en 2026
+        for (var r = 17; r >= 1; r--) {
+            var eventos = await fetchJornada(r);
+            if (eventos.length > 0) {
+                // Verificar si al menos un partido ya pasó
+                var algunoPaso = eventos.some(function(e) {
+                    return new Date(e.strTimestamp) <= ahoraGMT6;
+                });
+                if (algunoPaso) {
+                    roundActual = r;
+                    break;
+                }
+            }
+        }
+        return roundActual;
     }
 
     function renderTablaPartidos(eventos, titulo) {
         if (eventos.length === 0) {
-            return '<p style="color:#aaa;">No hay partidos para la ' + titulo + '.</p>';
+            return '<p style="color:#aaa;">No hay partidos disponibles para ' + titulo + '.</p>';
         }
 
-        // Ordenar por fecha
         eventos.sort(function(a, b) {
-            return new Date(a.dateEvent + 'T' + (a.strTime || '00:00:00'))
-                 - new Date(b.dateEvent + 'T' + (b.strTime || '00:00:00'));
+            return new Date(a.strTimestamp) - new Date(b.strTimestamp);
         });
 
-        let html = '<p style="color:#aaa; margin-bottom:8px; font-weight:bold;">' + titulo + '</p>'
+        var html = '<p style="color:#aaa; margin-bottom:8px; font-weight:bold;">' + titulo + '</p>'
                  + '<div class="tabla-container"><table style="width:100%; border-collapse:collapse; color:white;">'
                  + '<thead><tr style="background:#333;">'
                  + '<th style="padding:8px; border:1px solid #555;">Fecha</th>'
@@ -262,22 +349,27 @@
                  + '</tr></thead><tbody>';
 
         eventos.forEach(function(p) {
-            // Convertir hora UTC a GMT-6
-            var fechaHora = new Date(p.dateEvent + 'T' + (p.strTime || '12:00:00') + 'Z');
-            var fechaGMT6 = new Date(fechaHora.getTime() - 6 * 60 * 60 * 1000);
-            var fecha = fechaGMT6.toLocaleString('es-MX', {
-                weekday: 'short', day: 'numeric', month: 'short',
-                hour: '2-digit', minute: '2-digit', timeZone: 'UTC'
-            });
+            // strTimestamp viene en UTC
+            // Restamos 6 horas fijas (GMT-6, hora de México sin verano)
+            var fechaUTC = new Date(p.strTimestamp);
+            var fechaGMT6 = new Date(fechaUTC.getTime() - 6 * 60 * 60 * 1000);
+
+            var dias = ['dom','lun','mar','mié','jue','vie','sáb'];
+            var meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+            var dia = dias[fechaGMT6.getUTCDay()];
+            var numDia = fechaGMT6.getUTCDate();
+            var mes = meses[fechaGMT6.getUTCMonth()];
+            var hh = String(fechaGMT6.getUTCHours()).padStart(2,'0');
+            var mm = String(fechaGMT6.getUTCMinutes()).padStart(2,'0');
+            var fecha = dia + ' ' + numDia + ' ' + mes + ', ' + hh + ':' + mm;
+            var hora  = hh + ':' + mm;
 
             var local  = p.strHomeTeam;
             var visita = p.strAwayTeam;
             var marcador;
-
             if (p.intHomeScore !== null && p.intHomeScore !== '' && p.intHomeScore !== undefined) {
                 marcador = '<strong>' + p.intHomeScore + ' - ' + p.intAwayScore + '</strong>';
             } else {
-                var hora = fechaGMT6.toLocaleString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
                 marcador = '<span style="color:#aaa;">' + hora + '</span>';
             }
 
@@ -294,35 +386,71 @@
     }
 
     async function cargarCalendario() {
-        const div = document.getElementById('seccion-calendario');
+        var div = document.getElementById('seccion-calendario');
         div.innerHTML = '<p style="color:#aaa;">Cargando...</p>';
 
         try {
-            // Primero obtener el round actual de la API
-            const urlLiga = 'https://www.thesportsdb.com/api/v1/json/123/lookupleague.php?id=4350';
-            const resLiga = await fetch(urlLiga);
-            const dataLiga = await resLiga.json();
-            const liga = dataLiga.leagues && dataLiga.leagues[0];
-            const roundActual = parseInt((liga && liga.intRound) || 11);
+            var roundActual = await detectarRoundActual();
+            var round;
+            if (vistaCalendario === 'pasados')   round = roundActual - 1;
+            else if (vistaCalendario === 'proximos') round = roundActual;
+            else round = roundActual + 1; // siguiente
 
-            const round = vistaCalendario === 'proximos' ? roundActual : roundActual - 1;
-            // La jornada del Clausura = round - 17 (porque Apertura usa rounds 1-17)
-            const jornadaClausura = round > 17 ? round - 17 : round;
-            const titulo = 'Jornada ' + jornadaClausura + ' - Clausura 2026';
-
-            const eventos = await fetchJornada(round);
+            var titulo = 'Jornada ' + round + ' - Clausura 2026';
+            var eventos = await fetchJornada(round);
             div.innerHTML = renderTablaPartidos(eventos, titulo);
 
         } catch (e) {
-            div.innerHTML = '<p style="color:#ff5252;">Error al cargar partidos: ' + e.message + '</p>';
+            div.innerHTML = '<p style="color:#ff5252;">Error: ' + e.message + '</p>';
             console.error(e);
+        }
+    }
+
+    // ADMIN
+    const ADMIN_EMAIL = 'greenday_115@hotmail.com';
+    const RENDER_URL_VERIFICADOR = 'https://ligamx-pjcd.onrender.com/api/verificar';
+
+    function mostrarAdminSiAplica() {
+        if (userActual && userActual.email === ADMIN_EMAIL) {
+            document.getElementById('admin-section').style.display = 'block';
+        }
+    }
+
+    async function correrVerificador() {
+        var btn = document.getElementById('btn-verificar');
+        var fb  = document.getElementById('admin-feedback');
+
+        btn.disabled = true;
+        btn.innerText = 'Ejecutando...';
+        fb.innerText = 'Conectando con el servidor...';
+        fb.style.color = '#aaa';
+
+        try {
+            var response = await fetch(RENDER_URL_VERIFICADOR, { method: 'POST' });
+            var data = await response.json();
+
+            if (data.success) {
+                fb.innerText = '✅ ' + (data.mensaje || 'Verificacion completada.');
+                fb.style.color = '#00c853';
+                cargarTablaGlobal(); // Refrescar tabla con nuevas vidas
+            } else {
+                fb.innerText = '❌ Error: ' + (data.error || 'Error desconocido');
+                fb.style.color = '#ff5252';
+            }
+        } catch (e) {
+            fb.innerText = '❌ No se pudo conectar con el servidor: ' + e.message;
+            fb.style.color = '#ff5252';
+        } finally {
+            btn.disabled = false;
+            btn.innerText = '▶ CORRER VERIFICADOR AHORA';
         }
     }
 
     function verSemana(tipo) {
         vistaCalendario = tipo;
-        document.getElementById('btn-proximos').className = tipo === 'proximos' ? 'btn-verde' : 'btn-gris';
-        document.getElementById('btn-pasados').className  = tipo === 'pasados'  ? 'btn-verde' : 'btn-gris';
+        document.getElementById('btn-proximos').className  = tipo === 'proximos'  ? 'btn-verde' : 'btn-gris';
+        document.getElementById('btn-pasados').className   = tipo === 'pasados'   ? 'btn-verde' : 'btn-gris';
+        document.getElementById('btn-siguiente').className = tipo === 'siguiente' ? 'btn-verde' : 'btn-gris';
         cargarCalendario();
     }
 
