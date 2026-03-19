@@ -351,7 +351,7 @@
 
         eventos.forEach(function(p) {
             // strTimestamp viene en UTC, México siempre es GMT-6 (no cambia horario)
-            var fechaUTC = new Date(p.strTimestamp);
+            var fechaUTC = new Date(p.strTimestamp + 'Z');
             var fechaGMT6 = new Date(fechaUTC.getTime() - 6 * 60 * 60 * 1000);
 
             var dias  = ['dom','lun','mar','mié','jue','vie','sáb'];
