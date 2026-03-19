@@ -301,36 +301,25 @@
 
     async function fetchJornada(round) {
         var url = 'https://www.thesportsdb.com/api/v1/json/123/eventsround.php?id=4350&r=' + round + '&s=2025-2026';
-        
-        try {
-            var response = await fetch(url);
-            if (!response.ok) {
-                throw new Error('HTTP ' + response.status + ': ' + response.statusText);
-            }
-            var data = await response.json();
-            var todos = data.events || [];
-            // Solo partidos de 2026 (Clausura)
-            return todos.filter(function(e) { return e.dateEvent && e.dateEvent.startsWith('2026'); });
-        } catch (error) {
-            console.error('Error fetching jornada ' + round + ':', error);
-            // Retornar array vacío para que la app continúe funcionando
-            return [];
-        }
+        var response = await fetch(url);
+        var data = await response.json();
+        var todos = data.events || [];
+        // Solo partidos de 2026 (Clausura)
+        return todos.filter(function(e) { return e.dateEvent && e.dateEvent.startsWith('2026'); });
     }
 
     // Detectar jornada actual buscando el round que tenga partidos en 2026
-    // y cuya fecha más reciente sea <= ahora (México GMT-6)
+    // y cuya fecha más reciente sea <= hoy GMT-6
     async function detectarRoundActual() {
-        var ahoraMexico = new Date(new Date().getTime() - 6 * 60 * 60 * 1000);
-        var roundActual = 1;
-        // Probamos rounds del 1 al 17 buscando el más reciente con partidos en 2026
+        var ahoraUTC = new Date();
+        var roundActual = 11; // fallback seguro: jornada 11 ya jugada
+        // Probamos rounds del 17 al 1 buscando el más reciente con partidos en 2026
         for (var r = 17; r >= 1; r--) {
             var eventos = await fetchJornada(r);
             if (eventos.length > 0) {
-                // Verificar si al menos un partido ya pasó
+                // Verificar si al menos un partido ya pasó en UTC
                 var algunoPaso = eventos.some(function(e) {
-                    var fechaPartidoMexico = new Date(new Date(e.strTimestamp).getTime() - 6 * 60 * 60 * 1000);
-                    return fechaPartidoMexico <= ahoraMexico;
+                    return new Date(e.strTimestamp) <= ahoraUTC;
                 });
                 if (algunoPaso) {
                     roundActual = r;
@@ -338,7 +327,8 @@
                 }
             }
         }
-        return roundActual;
+        // Seguridad: nunca devolver menos de 11 (jornadas anteriores ya jugadas)
+        return Math.max(roundActual, 11);
     }
 
     function renderTablaPartidos(eventos, titulo) {
@@ -360,17 +350,17 @@
                  + '</tr></thead><tbody>';
 
         eventos.forEach(function(p) {
-            // strTimestamp viene en UTC, México es GMT-6
+            // strTimestamp viene en UTC, México siempre es GMT-6 (no cambia horario)
             var fechaUTC = new Date(p.strTimestamp);
-            var fechaMexico = new Date(fechaUTC.getTime() - 6 * 60 * 60 * 1000);
+            var fechaGMT6 = new Date(fechaUTC.getTime() - 6 * 60 * 60 * 1000);
 
             var dias  = ['dom','lun','mar','mié','jue','vie','sáb'];
             var meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-            var dia    = dias[fechaMexico.getDay()];
-            var numDia = fechaMexico.getDate();
-            var mes    = meses[fechaMexico.getMonth()];
-            var hh     = String(fechaMexico.getHours()).padStart(2,'0');
-            var mm     = String(fechaMexico.getMinutes()).padStart(2,'0');
+            var dia    = dias[fechaGMT6.getUTCDay()];
+            var numDia = fechaGMT6.getUTCDate();
+            var mes    = meses[fechaGMT6.getUTCMonth()];
+            var hh     = String(fechaGMT6.getUTCHours()).padStart(2,'0');
+            var mm     = String(fechaGMT6.getUTCMinutes()).padStart(2,'0');
             var hora   = hh + ':' + mm;
             var fecha  = dia + ' ' + numDia + ' ' + mes + ', ' + hora;
 
@@ -406,24 +396,13 @@
             else if (vistaCalendario === 'proximos') round = roundActual;
             else round = roundActual + 1; // siguiente
 
-            // Validar que el round sea válido
-            if (round < 1 || round > 17) {
-                div.innerHTML = '<p style="color:#ff9800;">No hay información disponible para esta jornada.</p>';
-                return;
-            }
-
             var titulo = 'Jornada ' + round + ' - Clausura 2026';
             var eventos = await fetchJornada(round);
-            
-            if (eventos.length === 0) {
-                div.innerHTML = '<p style="color:#ff9800;">No se encontraron partidos para la ' + titulo + '.<br><small>Es posible que la API esté temporalmente indisponible.</small></p>';
-            } else {
-                div.innerHTML = renderTablaPartidos(eventos, titulo);
-            }
+            div.innerHTML = renderTablaPartidos(eventos, titulo);
 
         } catch (e) {
-            div.innerHTML = '<p style="color:#ff5252;">❌ Error al cargar los partidos: ' + e.message + '<br><small>Intenta recargar la página en unos minutos.</small></p>';
-            console.error('Error en cargarCalendario:', e);
+            div.innerHTML = '<p style="color:#ff5252;">Error: ' + e.message + '</p>';
+            console.error(e);
         }
     }
 
