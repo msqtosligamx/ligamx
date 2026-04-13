@@ -51,6 +51,15 @@
         <p id="feedback"></p>
 
         <hr>
+        <h3>Equipos Disponibles</h3>
+        <div id="equipos-pendientes-section" style="margin: 20px 0;">
+            <p style="color:#aaa; margin-bottom:10px;">Equipos que aún no has seleccionado:</p>
+            <div id="tabla-equipos-pendientes" class="tabla-container">
+                <p style="color:#aaa;">Cargando equipos disponibles...</p>
+            </div>
+        </div>
+
+        <hr>
         <h3>Panel de Supervivencia</h3>
         <div class="tabla-container">
             <table style="width:100%; border-collapse:collapse; color:white;">
@@ -167,7 +176,67 @@
         cargarTablaGlobal();
         cargarCalendario();
         detectarJornadaSiguiente();
+        cargarEquiposPendientes();
         mostrarAdminSiAplica();
+    }
+
+    // EQUIPOS PENDIENTES
+    async function cargarEquiposPendientes() {
+        if (!userActual || !jornadaSiguiente) return;
+
+        try {
+            // Obtener todos los equipos
+            const { data: todosEquipos } = await supabaseClient
+                .from('equipos_ligamx')
+                .select('id, nombre')
+                .order('nombre');
+
+            // Obtener selecciones del usuario en todas las jornadas
+            const { data: seleccionesUsuario } = await supabaseClient
+                .from('selecciones')
+                .select('equipo_id')
+                .eq('user_id', userActual.id)
+                .neq('estatus', 'fallo');
+
+            // IDs de equipos ya usados
+            const equiposUsadosIds = new Set(
+                seleccionesUsuario.map(s => s.equipo_id).filter(id => id)
+            );
+
+            // Filtrar equipos no usados
+            const equiposDisponibles = todosEquipos.filter(
+                equipo => !equiposUsadosIds.has(equipo.id)
+            );
+
+            const divTabla = document.getElementById('tabla-equipos-pendientes');
+            
+            if (equiposDisponibles.length === 0) {
+                divTabla.innerHTML = '<p style="color:#00c853;">¡Ya has usado todos los equipos disponibles!</p>';
+                return;
+            }
+
+            // Crear tabla
+            let html = '<table style="width:100%; border-collapse:collapse; color:white;">'
+                     + '<thead><tr style="background:#333;">'
+                     + '<th style="padding:8px; border:1px solid #555;">#</th>'
+                     + '<th style="padding:8px; border:1px solid #555;">Equipo</th>'
+                     + '</tr></thead><tbody>';
+
+            equiposDisponibles.forEach((equipo, index) => {
+                html += '<tr>'
+                      + '<td style="padding:8px; border:1px solid #555; text-align:center;">' + (index + 1) + '</td>'
+                      + '<td style="padding:8px; border:1px solid #555;">' + equipo.nombre + '</td>'
+                      + '</tr>';
+            });
+
+            html += '</tbody></table>';
+            divTabla.innerHTML = html;
+
+        } catch (error) {
+            console.error('Error al cargar equipos pendientes:', error);
+            document.getElementById('tabla-equipos-pendientes').innerHTML = 
+                '<p style="color:#ff5252;">Error al cargar equipos disponibles</p>';
+        }
     }
 
     // JORNADA SIGUIENTE - se detecta automáticamente
@@ -251,6 +320,7 @@
             document.getElementById('btn-save').style.cursor = 'not-allowed';
             document.getElementById('team-select').disabled = true;
             cargarTablaGlobal();
+            cargarEquiposPendientes();
         }
     };
 
