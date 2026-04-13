@@ -176,20 +176,28 @@
         cargarTablaGlobal();
         cargarCalendario();
         detectarJornadaSiguiente();
-        cargarEquiposPendientes();
         mostrarAdminSiAplica();
+        
+        // Cargar equipos pendientes después de que todo esté inicializado
+        setTimeout(() => {
+            cargarEquiposPendientes();
+        }, 1000);
     }
 
     // EQUIPOS PENDIENTES
     async function cargarEquiposPendientes() {
-        if (!userActual || !jornadaSiguiente) return;
+        if (!userActual) return;
 
         try {
+            console.log('Cargando equipos pendientes para usuario:', userActual.id);
+            
             // Obtener todos los equipos
             const { data: todosEquipos } = await supabaseClient
                 .from('equipos_ligamx')
                 .select('id, nombre')
                 .order('nombre');
+
+            console.log('Todos los equipos:', todosEquipos?.length || 0);
 
             // Obtener selecciones del usuario en todas las jornadas
             const { data: seleccionesUsuario } = await supabaseClient
@@ -198,15 +206,21 @@
                 .eq('user_id', userActual.id)
                 .neq('estatus', 'fallo');
 
+            console.log('Selecciones del usuario:', seleccionesUsuario?.length || 0);
+
             // IDs de equipos ya usados
             const equiposUsadosIds = new Set(
                 seleccionesUsuario.map(s => s.equipo_id).filter(id => id)
             );
 
+            console.log('Equipos usados IDs:', Array.from(equiposUsadosIds));
+
             // Filtrar equipos no usados
             const equiposDisponibles = todosEquipos.filter(
                 equipo => !equiposUsadosIds.has(equipo.id)
             );
+
+            console.log('Equipos disponibles:', equiposDisponibles.length);
 
             const divTabla = document.getElementById('tabla-equipos-pendientes');
             
