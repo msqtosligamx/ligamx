@@ -84,6 +84,21 @@
                 ▶ CORRER VERIFICADOR AHORA
             </button>
             <p id="admin-feedback" style="color:#aaa;"></p>
+
+            <hr style="margin:15px 0; border-color:#555;">
+            <p style="color:#aaa; font-size:13px; margin-bottom:8px;">Borrar selección incorrecta de un usuario:</p>
+            <select id="admin-usuario-select" style="background:#404040; color:white; margin-bottom:8px;">
+                <option value="">Selecciona usuario...</option>
+            </select>
+            <select id="admin-jornada-select" style="background:#404040; color:white; margin-bottom:8px;">
+                <option value="">Selecciona jornada...</option>
+            </select>
+            <p id="admin-seleccion-info" style="color:#aaa; font-size:13px; min-height:20px;"></p>
+            <button class="btn-full" style="background:#e65100; color:white; margin-bottom:10px;"
+                onclick="borrarSeleccion()">
+                🗑 BORRAR SELECCIÓN
+            </button>
+            <p id="admin-borrar-feedback" style="color:#aaa;"></p>
         </div>
 
         <hr style="margin:30px 0;">
@@ -500,6 +515,90 @@
     function mostrarAdminSiAplica() {
         if (userActual && userActual.email === ADMIN_EMAIL) {
             document.getElementById('admin-section').style.display = 'block';
+            cargarUsuariosAdmin();
+        }
+    }
+
+    async function cargarUsuariosAdmin() {
+        var { data: perfiles } = await supabaseClient
+            .from('perfiles')
+            .select('id, username')
+            .order('username');
+
+        var select = document.getElementById('admin-usuario-select');
+        select.innerHTML = '<option value="">Selecciona usuario...</option>';
+        perfiles.forEach(function(p) {
+            select.innerHTML += '<option value="' + p.id + '">' + (p.username || p.id) + '</option>';
+        });
+
+        // Al cambiar usuario cargar sus jornadas
+        select.onchange = function() {
+            cargarJornadasAdmin(this.value);
+        };
+    }
+
+    async function cargarJornadasAdmin(userId) {
+        var selectJornada = document.getElementById('admin-jornada-select');
+        var info = document.getElementById('admin-seleccion-info');
+        selectJornada.innerHTML = '<option value="">Selecciona jornada...</option>';
+        info.innerText = '';
+
+        if (!userId) return;
+
+        var { data: selecciones } = await supabaseClient
+            .from('selecciones')
+            .select('jornada, estatus, equipos_ligamx(nombre)')
+            .eq('user_id', userId)
+            .order('jornada');
+
+        if (!selecciones || selecciones.length === 0) {
+            selectJornada.innerHTML = '<option value="">Sin selecciones</option>';
+            return;
+        }
+
+        selecciones.forEach(function(s) {
+            var equipo = s.equipos_ligamx ? s.equipos_ligamx.nombre : 'Sin equipo';
+            selectJornada.innerHTML += '<option value="' + s.jornada + '">J' + s.jornada + ' - ' + equipo + ' (' + s.estatus + ')</option>';
+        });
+
+        selectJornada.onchange = function() {
+            var sel = selecciones.find(function(s) { return s.jornada == selectJornada.value; });
+            if (sel) {
+                var equipo = sel.equipos_ligamx ? sel.equipos_ligamx.nombre : 'Sin equipo';
+                info.innerText = 'Selección: ' + equipo + ' - Estatus: ' + sel.estatus;
+                info.style.color = sel.estatus === 'fallo' ? '#ff5252' : sel.estatus === 'acierto' ? '#00c853' : '#aaa';
+            }
+        };
+    }
+
+    async function borrarSeleccion() {
+        var userId  = document.getElementById('admin-usuario-select').value;
+        var jornada = document.getElementById('admin-jornada-select').value;
+        var fb      = document.getElementById('admin-borrar-feedback');
+
+        if (!userId || !jornada) {
+            fb.innerText = 'Selecciona usuario y jornada.';
+            fb.style.color = '#ff5252';
+            return;
+        }
+
+        if (!confirm('¿Seguro que quieres borrar esta selección?')) return;
+
+        var { error } = await supabaseClient
+            .from('selecciones')
+            .delete()
+            .eq('user_id', userId)
+            .eq('jornada', jornada);
+
+        if (error) {
+            fb.innerText = 'Error: ' + error.message;
+            fb.style.color = '#ff5252';
+        } else {
+            fb.innerText = '✅ Selección borrada correctamente.';
+            fb.style.color = '#00c853';
+            // Recargar jornadas del usuario
+            cargarJornadasAdmin(userId);
+            cargarTablaGlobal();
         }
     }
 
