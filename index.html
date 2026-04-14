@@ -51,15 +51,6 @@
         <p id="feedback"></p>
 
         <hr>
-        <h3>Equipos Disponibles</h3>
-        <div id="equipos-pendientes-section" style="margin: 20px 0;">
-            <p style="color:#aaa; margin-bottom:10px;">Equipos que aún no has seleccionado:</p>
-            <div id="tabla-equipos-pendientes" class="tabla-container">
-                <p style="color:#aaa;">Cargando equipos disponibles...</p>
-            </div>
-        </div>
-
-        <hr>
         <h3>Panel de Supervivencia</h3>
         <div class="tabla-container">
             <table style="width:100%; border-collapse:collapse; color:white;">
@@ -93,6 +84,15 @@
                 ▶ CORRER VERIFICADOR AHORA
             </button>
             <p id="admin-feedback" style="color:#aaa;"></p>
+        </div>
+
+        <hr style="margin:30px 0;">
+        <h3>Equipos Disponibles</h3>
+        <div id="equipos-pendientes-section" style="margin: 20px 0;">
+            <p style="color:#aaa; margin-bottom:10px;">Equipos que aún no has seleccionado:</p>
+            <div id="tabla-equipos-pendientes" class="tabla-container">
+                <p style="color:#aaa;">Cargando equipos disponibles...</p>
+            </div>
         </div>
 
     </div>
@@ -291,6 +291,9 @@
             btnSave.style.cursor = 'pointer';
             document.getElementById('team-select').disabled = false;
         }
+        
+        // Cargar equipos pendientes aquí también
+        cargarEquiposPendientes();
     }
 
     // GUARDAR SELECCION
