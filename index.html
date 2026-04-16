@@ -178,12 +178,44 @@
             }]);
         }
 
-        // Cargar vidas
+        // Cargar vidas y verificar estado del jugador
         const { data: perfil } = await supabaseClient
-            .from('perfiles').select('vidas').eq('id', userActual.id).single();
-        if (perfil) document.getElementById('vidas-count').innerText = perfil.vidas;
+            .from('perfiles').select('vidas, eliminado').eq('id', userActual.id).single();
+        
+        if (perfil) {
+            document.getElementById('vidas-count').innerText = perfil.vidas;
+            
+            // Verificar si el usuario está eliminado o no tiene vidas
+            if (perfil.vidas <= 0 || perfil.eliminado) {
+                // Mostrar mensaje de eliminado
+                const feedback = document.getElementById('feedback');
+                feedback.innerText = '¡HAS SIDO ELIMINADO! Ya no puedes seleccionar equipos. Revisa la tabla para ver los resultados.';
+                feedback.style.color = '#ff5252';
+                feedback.style.fontWeight = 'bold';
+                feedback.style.fontSize = '16px';
+                
+                // Bloquear selección de equipos
+                const btnGuardar = document.getElementById('btn-save');
+                const selectEquipos = document.getElementById('team-select');
+                
+                btnGuardar.disabled = true;
+                btnGuardar.style.background = '#555';
+                btnGuardar.style.cursor = 'not-allowed';
+                btnGuardar.innerText = 'ELIMINADO - NO PUEDES SELECCIONAR';
+                
+                selectEquipos.disabled = true;
+                selectEquipos.style.background = '#333';
+                selectEquipos.innerHTML = '<option value="">ELIMINADO - SIN VIDAS</option>';
+                
+                // Cambiar color de vidas a rojo
+                document.getElementById('vidas-count').style.color = '#ff5252';
+                
+                console.log('Usuario eliminado - selección bloqueada');
+                return; // No continuar cargando equipos
+            }
+        }
 
-        // Cargar equipos
+        // Cargar equipos (solo si tiene vidas)
         const { data: equipos } = await supabaseClient.from('equipos_ligamx').select('*');
         const select = document.getElementById('team-select');
         select.innerHTML = equipos.map(e => "<option value='" + e.id + "'>" + e.nombre + "</option>").join('');
@@ -204,6 +236,18 @@
         if (!userActual) return;
 
         try {
+            // Verificar si el usuario está eliminado
+            const { data: perfilActual } = await supabaseClient
+                .from('perfiles')
+                .select('vidas, eliminado')
+                .eq('id', userActual.id)
+                .single();
+
+            if (!perfilActual || perfilActual.vidas <= 0 || perfilActual.eliminado) {
+                document.getElementById('tabla-equipos-pendientes').innerHTML = 
+                    '<p style="color:#ff5252; font-weight:bold;">ELIMINADO - Ya no puedes participar en el juego</p>';
+                return;
+            }
             console.log('Cargando equipos pendientes para usuario:', userActual.id);
             
             // Obtener todos los equipos
@@ -284,6 +328,32 @@
         label.style.fontWeight = 'bold';
         label.style.fontSize = '18px';
 
+        // Verificar si el usuario tiene vidas antes de continuar
+        var { data: perfilActual } = await supabaseClient
+            .from('perfiles')
+            .select('vidas, eliminado')
+            .eq('id', userActual.id)
+            .single();
+
+        if (!perfilActual || perfilActual.vidas <= 0 || perfilActual.eliminado) {
+            // Usuario eliminado - mostrar mensaje y bloquear
+            fb.innerText = '¡HAS SIDO ELIMINADO! Ya no puedes seleccionar equipos. Revisa la tabla para ver los resultados.';
+            fb.style.color = '#ff5252';
+            fb.style.fontWeight = 'bold';
+            fb.style.fontSize = '16px';
+            
+            btnSave.disabled = true;
+            btnSave.style.background = '#555';
+            btnSave.style.cursor = 'not-allowed';
+            btnSave.innerText = 'ELIMINADO - NO PUEDES SELECCIONAR';
+            
+            document.getElementById('team-select').disabled = true;
+            document.getElementById('team-select').style.background = '#333';
+            document.getElementById('team-select').innerHTML = '<option value="">ELIMINADO - SIN VIDAS</option>';
+            
+            return; // No continuar verificando selecciones
+        }
+
         // Verificar si ya eligió para esta jornada
         var { data: yaExiste } = await supabaseClient
             .from('selecciones')
@@ -317,6 +387,18 @@
 
         if (!jornadaSiguiente) { alert("Espera, detectando jornada..."); return; }
         if (!eqId) { alert("Selecciona un equipo"); return; }
+
+        // Verificación final de vidas (doble seguridad)
+        const { data: perfilFinal } = await supabaseClient
+            .from('perfiles')
+            .select('vidas, eliminado')
+            .eq('id', userActual.id)
+            .single();
+
+        if (!perfilFinal || perfilFinal.vidas <= 0 || perfilFinal.eliminado) {
+            alert("¡HAS SIDO ELIMINADO! Ya no puedes seleccionar equipos.");
+            return;
+        }
 
         // Verificar si ya usó este equipo en una jornada anterior
         const { data: equipoRepetido } = await supabaseClient
