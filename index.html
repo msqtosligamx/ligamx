@@ -584,21 +584,34 @@
 
         if (!confirm('¿Seguro que quieres borrar esta selección?')) return;
 
-        var { error } = await supabaseClient
-            .from('selecciones')
-            .delete()
-            .eq('user_id', userId)
-            .eq('jornada', jornada);
+        try {
+            // Llamar al endpoint seguro del backend
+            var response = await fetch(RENDER_URL + '/api/admin/delete-seleccion', {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + (await supabaseClient.auth.getSession()).data.session?.access_token
+                },
+                body: JSON.stringify({
+                    userId: userId,
+                    jornada: jornada
+                })
+            });
 
-        if (error) {
-            fb.innerText = 'Error: ' + error.message;
+            var data = await response.json();
+
+            if (data.error) {
+                fb.innerText = 'Error: ' + data.error;
+                fb.style.color = '#ff5252';
+            } else {
+                fb.innerText = '✅ Selección borrada correctamente.';
+                fb.style.color = '#00c853';
+                cargarJornadasAdmin(userId);
+                cargarTablaGlobal();
+            }
+        } catch (e) {
+            fb.innerText = 'Error de conexión: ' + e.message;
             fb.style.color = '#ff5252';
-        } else {
-            fb.innerText = '✅ Selección borrada correctamente.';
-            fb.style.color = '#00c853';
-            // Recargar jornadas del usuario
-            cargarJornadasAdmin(userId);
-            cargarTablaGlobal();
         }
     }
 
