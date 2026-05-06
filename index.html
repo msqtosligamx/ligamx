@@ -99,6 +99,14 @@
                 🗑 BORRAR SELECCIÓN
             </button>
             <p id="admin-borrar-feedback" style="color:#aaa;"></p>
+
+            <hr style="margin:15px 0; border-color:#555;">
+            <p style="color:#aaa; font-size:13px; margin-bottom:8px;">⚠️ ACCIÓN DESTRUCTIVA - Resetear torneo completo:</p>
+            <button class="btn-full" style="background:#d32f2f; color:white; margin-bottom:10px;"
+                onclick="resetearTorneo()">
+                🔄 RESETEAR TORNEO (BORRAR TODO)
+            </button>
+            <p id="admin-reset-feedback" style="color:#aaa;"></p>
         </div>
 
         <hr style="margin:30px 0;">
@@ -731,6 +739,52 @@
         } finally {
             btn.disabled = false;
             btn.innerText = '▶ CORRER VERIFICADOR AHORA';
+        }
+    }
+
+    async function resetearTorneo() {
+        var fb = document.getElementById('admin-reset-feedback');
+        
+        if (!confirm('⚠️ ESTÁS A PUNTO DE BORRAR TODOS LOS DATOS DEL TORNEO\n\nEsta acción:\n- Borrará todas las selecciones\n- Borrará todos los resultados\n- Borrará todas las jornadas\n- Borrará todos los equipos\n- Borrará todos los usuarios EXCEPTO el admin\n\n¿ESTÁS SEGURO?')) {
+            return;
+        }
+
+        if (!confirm('ÚLTIMA ADVERTENCIA\n\nEsta acción no se puede deshacer.\n¿Confirmas que quieres resetear el torneo completo?')) {
+            return;
+        }
+
+        try {
+            fb.innerText = 'Conectando con el servidor...';
+            fb.style.color = '#ffa726';
+
+            var response = await fetch(RENDER_URL + '/api/admin/reset-tournament', {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + (await supabaseClient.auth.getSession()).data.session?.access_token
+                }
+            });
+
+            var data = await response.json();
+
+            if (data.error) {
+                fb.innerText = '❌ Error: ' + data.error;
+                fb.style.color = '#ff5252';
+            } else if (data.success) {
+                fb.innerText = '✅ Torneo reseteado correctamente. Tablas borradas: ' + Object.keys(data.resultados).join(', ');
+                fb.style.color = '#00c853';
+                
+                // Recargar la página después de 2 segundos
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            } else {
+                fb.innerText = '❌ Respuesta inesperada del servidor';
+                fb.style.color = '#ff5252';
+            }
+        } catch (e) {
+            fb.innerText = '❌ Error de conexión: ' + e.message;
+            fb.style.color = '#ff5252';
         }
     }
 
