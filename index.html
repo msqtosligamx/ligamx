@@ -137,14 +137,21 @@
             let { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
 
             if (error) {
-                const { data: regData, error: eReg } = await supabaseClient.auth.signUp({ email, password });
-                if (eReg) { alert("Error al registrar: " + eReg.message); return; }
-                if (regData && regData.user) {
-                    userActual = regData.user;
-                } else {
-                    alert("Cuenta creada. Presiona Entrar de nuevo.");
+                // Si falla el login, intentamos registro con backend (reintentos y mensaje amigable)
+                const registerResp = await fetch(RENDER_URL + '/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const registerData = await registerResp.json();
+
+                if (!registerResp.ok || !registerData.success) {
+                    alert(registerData.error || "No se pudo registrar en este momento.");
                     return;
                 }
+
+                alert("Cuenta creada. Presiona Entrar de nuevo.");
+                return;
             } else {
                 userActual = data.user;
             }
