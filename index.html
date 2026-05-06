@@ -100,14 +100,7 @@
             </button>
             <p id="admin-borrar-feedback" style="color:#aaa;"></p>
 
-            <hr style="margin:15px 0; border-color:#555;">
-            <p style="color:#aaa; font-size:13px; margin-bottom:8px;">⚠️ ACCIÓN DESTRUCTIVA - Resetear torneo completo:</p>
-            <button class="btn-full" style="background:#d32f2f; color:white; margin-bottom:10px;"
-                onclick="resetearTorneo()">
-                🔄 RESETEAR TORNEO (BORRAR TODO)
-            </button>
-            <p id="admin-reset-feedback" style="color:#aaa;"></p>
-        </div>
+            </div>
 
         <hr style="margin:30px 0;">
         <h3>Equipos Disponibles</h3>
@@ -116,6 +109,17 @@
             <div id="tabla-equipos-pendientes" class="tabla-container">
                 <p style="color:#aaa;">Cargando equipos disponibles...</p>
             </div>
+        </div>
+
+        <!-- SECCIÓN RESET TORNEO - solo visible para administrador -->
+        <div id="reset-torneo-section" style="display:none; margin-top:30px; border-top: 2px solid #d32f2f; padding-top:20px;">
+            <h3 style="color:#d32f2f;">⚠️ Panel de Reset del Torneo</h3>
+            <p style="color:#aaa; font-size:13px; margin-bottom:15px;">ADVERTENCIA: Esta acción borrará todos los datos del torneo excepto tu cuenta de admin.</p>
+            <button class="btn-full" style="background:#d32f2f; color:white; margin-bottom:10px;"
+                onclick="resetearTorneo()">
+                🔄 RESETEAR TORNEO COMPLETO (BORRAR TODO)
+            </button>
+            <p id="admin-reset-feedback" style="color:#aaa;"></p>
         </div>
 
     </div>
@@ -612,6 +616,7 @@
     function mostrarAdminSiAplica() {
         if (userActual && userActual.email === ADMIN_EMAIL) {
             document.getElementById('admin-section').style.display = 'block';
+            document.getElementById('reset-torneo-section').style.display = 'block';
             cargarUsuariosAdmin();
         }
     }
