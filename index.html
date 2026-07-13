@@ -336,7 +336,7 @@
 
     async function detectarJornadaSiguiente() {
         var roundActual = await detectarRoundActual();
-        jornadaSiguiente = roundActual + 1;
+        jornadaSiguiente = roundActual;
 
         var label = document.getElementById('jornada-label');
         var btnSave = document.getElementById('btn-save');
@@ -514,19 +514,19 @@
     }
 
     // Detectar jornada actual buscando el round que tenga partidos
-    // y cuya fecha más reciente sea <= hoy GMT-6
+    // y cuya fecha más reciente sea >= hoy GMT-6 (jornada próxima o actual)
     async function detectarRoundActual() {
         var ahoraUTC = new Date();
         var roundActual = 1; // fallback: jornada 1 (inicio del torneo)
-        // Probamos rounds del 17 al 1 buscando el más reciente con partidos
-        for (var r = 17; r >= 1; r--) {
+        // Probamos rounds del 1 al 17 buscando el primero con partidos futuros
+        for (var r = 1; r <= 17; r++) {
             var eventos = await fetchJornada(r);
             if (eventos.length > 0) {
-                // Verificar si al menos un partido ya pasó en UTC
-                var algunoPaso = eventos.some(function(e) {
-                    return new Date(e.strTimestamp) <= ahoraUTC;
+                // Verificar si al menos un partido es futuro en UTC
+                var algunoFuturo = eventos.some(function(e) {
+                    return new Date(e.strTimestamp) > ahoraUTC;
                 });
-                if (algunoPaso) {
+                if (algunoFuturo) {
                     roundActual = r;
                     break;
                 }
