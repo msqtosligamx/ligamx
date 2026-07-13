@@ -501,16 +501,30 @@
     // TheSportsDB usa temporadas como "2026-2027" para Apertura 2026
     // No filtramos por año ya que el torneo puede abarcar 2026 y 2027
 
-    async function fetchJornada(round) {
-        var url = RENDER_URL + '/api/calendario-jornada/' + round;
+    // Caché para toda la temporada (evita múltiples llamadas a la API)
+    var cacheTemporada = null;
+
+    async function fetchTemporadaCompleta() {
+        if (cacheTemporada) {
+            return cacheTemporada;
+        }
+        var url = RENDER_URL + '/api/calendario-temporada';
         var response = await fetch(url);
         var data = await response.json();
         if (data.success) {
-            return data.partidos || [];
+            cacheTemporada = data.partidos || [];
+            return cacheTemporada;
         } else {
-            console.error('Error al cargar jornada:', data.error);
+            console.error('Error al cargar temporada:', data.error);
             return [];
         }
+    }
+
+    async function fetchJornada(round) {
+        var todos = await fetchTemporadaCompleta();
+        return todos.filter(function(e) {
+            return e.intRound == round;
+        });
     }
 
     // Detectar jornada actual buscando el round que tenga partidos
@@ -518,12 +532,24 @@
     async function detectarRoundActual() {
         var ahoraUTC = new Date();
         var roundActual = 1; // fallback: jornada 1 (inicio del torneo)
-        // Probamos rounds del 1 al 17 buscando el primero con partidos futuros
+        var todos = await fetchTemporadaCompleta();
+
+        if (todos.length === 0) {
+            return roundActual;
+        }
+
+        // Agrupar partidos por round
+        var porRound = {};
+        todos.forEach(function(e) {
+            var r = e.intRound;
+            if (!porRound[r]) porRound[r] = [];
+            porRound[r].push(e);
+        });
+
+        // Buscar el primer round con partidos futuros
         for (var r = 1; r <= 17; r++) {
-            var eventos = await fetchJornada(r);
-            if (eventos.length > 0) {
-                // Verificar si al menos un partido es futuro en UTC
-                var algunoFuturo = eventos.some(function(e) {
+            if (porRound[r] && porRound[r].length > 0) {
+                var algunoFuturo = porRound[r].some(function(e) {
                     return new Date(e.strTimestamp) > ahoraUTC;
                 });
                 if (algunoFuturo) {
