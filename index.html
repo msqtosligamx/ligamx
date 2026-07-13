@@ -502,10 +502,15 @@
     // No filtramos por año ya que el torneo puede abarcar 2026 y 2027
 
     async function fetchJornada(round) {
-        var url = 'https://www.thesportsdb.com/api/v1/json/123/eventsround.php?id=4350&r=' + round + '&s=2026-2027';
+        var url = RENDER_URL + '/api/calendario-jornada/' + round;
         var response = await fetch(url);
         var data = await response.json();
-        return data.events || [];
+        if (data.success) {
+            return data.partidos || [];
+        } else {
+            console.error('Error al cargar jornada:', data.error);
+            return [];
+        }
     }
 
     // Detectar jornada actual buscando el round que tenga partidos
