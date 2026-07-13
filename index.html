@@ -342,7 +342,7 @@
         var btnSave = document.getElementById('btn-save');
         var fb = document.getElementById('feedback');
 
-        label.innerText = 'Jornada ' + jornadaSiguiente + ' - Clausura 2026';
+        label.innerText = 'Jornada ' + jornadaSiguiente + ' - Apertura 2026';
         label.style.color = '#00c853';
         label.style.fontWeight = 'bold';
         label.style.fontSize = '18px';
@@ -498,25 +498,22 @@
     }
 
     // CALENDARIO
-    // TheSportsDB reutiliza el mismo intRound para Apertura y Clausura
-    // La diferencia es el año: Apertura=2025, Clausura=2026
-    // Filtramos por año en dateEvent para mostrar solo los del torneo correcto
+    // TheSportsDB usa temporadas como "2026-2027" para Apertura 2026
+    // No filtramos por año ya que el torneo puede abarcar 2026 y 2027
 
     async function fetchJornada(round) {
-        var url = 'https://www.thesportsdb.com/api/v1/json/123/eventsround.php?id=4350&r=' + round + '&s=2025-2026';
+        var url = 'https://www.thesportsdb.com/api/v1/json/123/eventsround.php?id=4350&r=' + round + '&s=2026-2027';
         var response = await fetch(url);
         var data = await response.json();
-        var todos = data.events || [];
-        // Solo partidos de 2026 (Clausura)
-        return todos.filter(function(e) { return e.dateEvent && e.dateEvent.startsWith('2026'); });
+        return data.events || [];
     }
 
-    // Detectar jornada actual buscando el round que tenga partidos en 2026
+    // Detectar jornada actual buscando el round que tenga partidos
     // y cuya fecha más reciente sea <= hoy GMT-6
     async function detectarRoundActual() {
         var ahoraUTC = new Date();
-        var roundActual = 11; // fallback seguro: jornada 11 ya jugada
-        // Probamos rounds del 17 al 1 buscando el más reciente con partidos en 2026
+        var roundActual = 1; // fallback: jornada 1 (inicio del torneo)
+        // Probamos rounds del 17 al 1 buscando el más reciente con partidos
         for (var r = 17; r >= 1; r--) {
             var eventos = await fetchJornada(r);
             if (eventos.length > 0) {
@@ -530,8 +527,7 @@
                 }
             }
         }
-        // Seguridad: nunca devolver menos de 11 (jornadas anteriores ya jugadas)
-        return Math.max(roundActual, 11);
+        return roundActual;
     }
 
     function renderTablaPartidos(eventos, titulo) {
@@ -599,7 +595,7 @@
             else if (vistaCalendario === 'proximos') round = roundActual;
             else round = roundActual + 1; // siguiente
 
-            var titulo = 'Jornada ' + round + ' - Clausura 2026';
+            var titulo = 'Jornada ' + round + ' - Apertura 2026';
             var eventos = await fetchJornada(round);
             div.innerHTML = renderTablaPartidos(eventos, titulo);
 
