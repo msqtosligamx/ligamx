@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Liga MX Survivor</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; padding: 20px; background: #1a1a1a; color: white; }
         .card { background: #2d2d2d; padding: 30px; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); max-width: 1200px; margin: auto; }
@@ -129,11 +128,8 @@
 </div>
 
 <script>
-    const SB_URL = "https://povaakggggoeewgqfyot.supabase.co";
-    const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBvdmFha2dnZ2dvZWV3Z3FmeW90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxMjMzODMsImV4cCI6MjA4NzY5OTM4M30.HqtFd95Ot8P3DxjgGLIz40SuxBPJiB-9DavvcCSInHA";
     const RENDER_URL = "https://ligamx-pjcd.onrender.com";
-
-    const supabaseClient = supabase.createClient(SB_URL, SB_KEY);
+    let authToken = null;
     let userActual = null;
     let vistaCalendario = 'proximos';
 
@@ -149,10 +145,21 @@
         btn.innerText = "Cargando...";
 
         try {
-            let { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+            // Intentar login primero
+            let loginResp = await fetch(RENDER_URL + '/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            let loginData = await loginResp.json();
 
-            if (error) {
-                // Si falla el login, intentamos registro con backend (reintentos y mensaje amigable)
+            if (loginData.success) {
+                authToken = loginData.token;
+                userActual = loginData.user;
+                btn.innerText = "Cargando juego...";
+                await iniciarJuego();
+            } else {
+                // Si falla el login, intentar registro
                 btn.innerText = "Registrando...";
                 const registerResp = await fetch(RENDER_URL + '/api/auth/register', {
                     method: 'POST',
@@ -166,20 +173,24 @@
                     return;
                 }
 
-                // Auto-login: evita el segundo clic manual
+                // Auto-login después de registro
                 btn.innerText = "Iniciando sesión...";
-                const { data: loginData, error: loginError } = await supabaseClient.auth.signInWithPassword({ email, password });
-                if (loginError) {
-                    alert("Cuenta creada. Inicia sesión con tu correo y contraseña.");
-                    return;
-                }
-                userActual = loginData.user;
-            } else {
-                userActual = data.user;
-            }
+                loginResp = await fetch(RENDER_URL + '/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                loginData = await loginResp.json();
 
-            btn.innerText = "Cargando juego...";
-            await iniciarJuego();
+                if (loginData.success) {
+                    authToken = loginData.token;
+                    userActual = loginData.user;
+                    btn.innerText = "Cargando juego...";
+                    await iniciarJuego();
+                } else {
+                    alert("Cuenta creada. Inicia sesión con tu correo y contraseña.");
+                }
+            }
 
         } catch (e) {
             alert("Error: " + e.message);
@@ -202,23 +213,16 @@
         document.getElementById('game-section').style.display = 'block';
         document.getElementById('user-display').innerText = userActual.email;
 
-        // Obtener o crear perfil (1-2 consultas en lugar de 3)
-        let { data: perfil } = await supabaseClient
-            .from('perfiles').select('vidas, eliminado').eq('id', userActual.id).maybeSingle();
+        // Obtener perfil del usuario desde el backend
+        const perfilResp = await fetch(RENDER_URL + '/api/user/perfil', {
+            headers: { 'Authorization': 'Bearer ' + authToken }
+        });
+        const perfilData = await perfilResp.json();
 
-        if (!perfil) {
-            const { data: nuevoPerfil } = await supabaseClient.from('perfiles').insert([{
-                id: userActual.id,
-                username: userActual.email,
-                vidas: 3,
-                eliminado: false
-            }]).select('vidas, eliminado').single();
-            perfil = nuevoPerfil;
-        }
-        
-        if (perfil) {
+        if (perfilData.success && perfilData.perfil) {
+            const perfil = perfilData.perfil;
             document.getElementById('vidas-count').innerText = perfil.vidas;
-            
+
             // Verificar si el usuario está eliminado o no tiene vidas
             if (perfil.vidas <= 0 || perfil.eliminado) {
                 // Mostrar mensaje de eliminado
@@ -227,32 +231,36 @@
                 feedback.style.color = '#ff5252';
                 feedback.style.fontWeight = 'bold';
                 feedback.style.fontSize = '16px';
-                
+
                 // Bloquear selección de equipos
                 const btnGuardar = document.getElementById('btn-save');
                 const selectEquipos = document.getElementById('team-select');
-                
+
                 btnGuardar.disabled = true;
                 btnGuardar.style.background = '#555';
                 btnGuardar.style.cursor = 'not-allowed';
                 btnGuardar.innerText = 'ELIMINADO - NO PUEDES SELECCIONAR';
-                
+
                 selectEquipos.disabled = true;
                 selectEquipos.style.background = '#333';
                 selectEquipos.innerHTML = '<option value="">ELIMINADO - SIN VIDAS</option>';
-                
+
                 // Cambiar color de vidas a rojo
                 document.getElementById('vidas-count').style.color = '#ff5252';
-                
+
                 console.log('Usuario eliminado - selección bloqueada');
                 return; // No continuar cargando equipos
             }
         }
 
-        // Cargar equipos (solo si tiene vidas)
-        const { data: equipos } = await supabaseClient.from('equipos_ligamx').select('*');
-        const select = document.getElementById('team-select');
-        select.innerHTML = equipos.map(e => "<option value='" + e.id + "'>" + e.nombre + "</option>").join('');
+        // Cargar equipos desde el backend
+        const equiposResp = await fetch(RENDER_URL + '/api/equipos');
+        const equiposData = await equiposResp.json();
+
+        if (equiposData.success && equiposData.equipos) {
+            const select = document.getElementById('team-select');
+            select.innerHTML = equiposData.equipos.map(e => "<option value='" + e.id + "'>" + e.nombre + "</option>").join('');
+        }
 
         await Promise.all([
             cargarTablaGlobal(),
@@ -269,33 +277,32 @@
 
         try {
             // Verificar si el usuario está eliminado
-            const { data: perfilActual } = await supabaseClient
-                .from('perfiles')
-                .select('vidas, eliminado')
-                .eq('id', userActual.id)
-                .single();
+            const perfilResp = await fetch(RENDER_URL + '/api/user/perfil', {
+                headers: { 'Authorization': 'Bearer ' + authToken }
+            });
+            const perfilData = await perfilResp.json();
 
-            if (!perfilActual || perfilActual.vidas <= 0 || perfilActual.eliminado) {
-                document.getElementById('tabla-equipos-pendientes').innerHTML = 
+            if (!perfilData.success || !perfilData.perfil || perfilData.perfil.vidas <= 0 || perfilData.perfil.eliminado) {
+                document.getElementById('tabla-equipos-pendientes').innerHTML =
                     '<p style="color:#ff5252; font-weight:bold;">ELIMINADO - Ya no puedes participar en el juego</p>';
                 return;
             }
             console.log('Cargando equipos pendientes para usuario:', userActual.id);
-            
-            // Obtener todos los equipos
-            const { data: todosEquipos } = await supabaseClient
-                .from('equipos_ligamx')
-                .select('id, nombre')
-                .order('nombre');
 
+            // Obtener todos los equipos
+            const equiposResp = await fetch(RENDER_URL + '/api/equipos');
+            const equiposData = await equiposResp.json();
+
+            const todosEquipos = equiposData.success ? equiposData.equipos : [];
             console.log('Todos los equipos:', todosEquipos?.length || 0);
 
             // Obtener selecciones del usuario en todas las jornadas
-            const { data: seleccionesUsuario } = await supabaseClient
-                .from('selecciones')
-                .select('equipo_id')
-                .eq('user_id', userActual.id);
+            const seleccionesResp = await fetch(RENDER_URL + '/api/selecciones/user', {
+                headers: { 'Authorization': 'Bearer ' + authToken }
+            });
+            const seleccionesData = await seleccionesResp.json();
 
+            const seleccionesUsuario = seleccionesData.success ? seleccionesData.selecciones : [];
             console.log('Selecciones del usuario:', seleccionesUsuario?.length || 0);
 
             // IDs de equipos ya usados
@@ -313,7 +320,7 @@
             console.log('Equipos disponibles:', equiposDisponibles.length);
 
             const divTabla = document.getElementById('tabla-equipos-pendientes');
-            
+
             if (equiposDisponibles.length === 0) {
                 divTabla.innerHTML = '<p style="color:#00c853;">¡Ya has usado todos los equipos disponibles!</p>';
                 return;
@@ -338,7 +345,7 @@
 
         } catch (error) {
             console.error('Error al cargar equipos pendientes:', error);
-            document.getElementById('tabla-equipos-pendientes').innerHTML = 
+            document.getElementById('tabla-equipos-pendientes').innerHTML =
                 '<p style="color:#ff5252;">Error al cargar equipos disponibles</p>';
         }
     }
@@ -360,42 +367,41 @@
         label.style.fontSize = '18px';
 
         // Verificar si el usuario tiene vidas antes de continuar
-        var { data: perfilActual } = await supabaseClient
-            .from('perfiles')
-            .select('vidas, eliminado')
-            .eq('id', userActual.id)
-            .single();
+        const perfilResp = await fetch(RENDER_URL + '/api/user/perfil', {
+            headers: { 'Authorization': 'Bearer ' + authToken }
+        });
+        const perfilData = await perfilResp.json();
 
-        if (!perfilActual || perfilActual.vidas <= 0 || perfilActual.eliminado) {
+        if (!perfilData.success || !perfilData.perfil || perfilData.perfil.vidas <= 0 || perfilData.perfil.eliminado) {
             // Usuario eliminado - mostrar mensaje y bloquear
             fb.innerText = '¡HAS SIDO ELIMINADO! Ya no puedes seleccionar equipos. Revisa la tabla para ver los resultados.';
             fb.style.color = '#ff5252';
             fb.style.fontWeight = 'bold';
             fb.style.fontSize = '16px';
-            
+
             btnSave.disabled = true;
             btnSave.style.background = '#555';
             btnSave.style.cursor = 'not-allowed';
             btnSave.innerText = 'ELIMINADO - NO PUEDES SELECCIONAR';
-            
+
             document.getElementById('team-select').disabled = true;
             document.getElementById('team-select').style.background = '#333';
             document.getElementById('team-select').innerHTML = '<option value="">ELIMINADO - SIN VIDAS</option>';
-            
+
             return; // No continuar verificando selecciones
         }
 
         // Verificar si ya eligió para esta jornada
-        var { data: yaExiste } = await supabaseClient
-            .from('selecciones')
-            .select('id, equipos_ligamx(nombre)')
-            .eq('user_id', userActual.id)
-            .eq('jornada', jornadaSiguiente)
-            .single();
+        const seleccionesResp = await fetch(RENDER_URL + '/api/selecciones/user', {
+            headers: { 'Authorization': 'Bearer ' + authToken }
+        });
+        const seleccionesData = await seleccionesResp.json();
+
+        const seleccionesUsuario = seleccionesData.success ? seleccionesData.selecciones : [];
+        const yaExiste = seleccionesUsuario.find(s => s.jornada === jornadaSiguiente);
 
         if (yaExiste) {
-            var nombreEquipo = yaExiste.equipos_ligamx ? yaExiste.equipos_ligamx.nombre : 'tu equipo';
-            fb.innerText = 'Ya elegiste ' + nombreEquipo + ' para la Jornada ' + jornadaSiguiente + '.';
+            fb.innerText = 'Ya elegiste un equipo para la Jornada ' + jornadaSiguiente + '.';
             fb.style.color = '#aaa';
             btnSave.disabled = true;
             btnSave.style.background = '#555';
@@ -442,7 +448,7 @@
                 document.getElementById('team-select').disabled = false;
             }
         }
-        
+
         // Cargar equipos pendientes aquí también
         cargarEquiposPendientes();
     }
@@ -455,13 +461,12 @@
         if (!eqId) { alert("Selecciona un equipo"); return; }
 
         // Verificación final de vidas (doble seguridad)
-        const { data: perfilFinal } = await supabaseClient
-            .from('perfiles')
-            .select('vidas, eliminado')
-            .eq('id', userActual.id)
-            .single();
+        const perfilResp = await fetch(RENDER_URL + '/api/user/perfil', {
+            headers: { 'Authorization': 'Bearer ' + authToken }
+        });
+        const perfilData = await perfilResp.json();
 
-        if (!perfilFinal || perfilFinal.vidas <= 0 || perfilFinal.eliminado) {
+        if (!perfilData.success || !perfilData.perfil || perfilData.perfil.vidas <= 0 || perfilData.perfil.eliminado) {
             alert("¡HAS SIDO ELIMINADO! Ya no puedes seleccionar equipos.");
             return;
         }
@@ -487,12 +492,13 @@
         }
 
         // Verificar si ya usó este equipo en una jornada anterior
-        const { data: equipoRepetido } = await supabaseClient
-            .from('selecciones')
-            .select('jornada')
-            .eq('user_id', userActual.id)
-            .eq('equipo_id', eqId)
-            .single();
+        const seleccionesResp = await fetch(RENDER_URL + '/api/selecciones/user', {
+            headers: { 'Authorization': 'Bearer ' + authToken }
+        });
+        const seleccionesData = await seleccionesResp.json();
+
+        const seleccionesUsuario = seleccionesData.success ? seleccionesData.selecciones : [];
+        const equipoRepetido = seleccionesUsuario.find(s => s.equipo_id === eqId);
 
         if (equipoRepetido) {
             const fb = document.getElementById('feedback');
@@ -501,15 +507,22 @@
             return;
         }
 
-        const { error } = await supabaseClient.from('selecciones').insert([{
-            user_id: userActual.id,
-            equipo_id: eqId,
-            jornada: jornadaSiguiente,
-            estatus: 'pendiente'
-        }]);
+        // Guardar selección a través del backend
+        const saveResp = await fetch(RENDER_URL + '/api/selecciones', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + authToken
+            },
+            body: JSON.stringify({
+                equipo_id: eqId,
+                jornada: jornadaSiguiente
+            })
+        });
+        const saveData = await saveResp.json();
 
-        if (error) {
-            alert("ERROR: " + error.message + " | " + error.details);
+        if (saveData.error) {
+            alert("ERROR: " + saveData.error);
         } else {
             const fb = document.getElementById('feedback');
             fb.innerText = "Eleccion guardada para la Jornada " + jornadaSiguiente + "!";
@@ -526,10 +539,16 @@
 
     // TABLA GLOBAL
     async function cargarTablaGlobal() {
-        const { data: perfiles } = await supabaseClient
-            .from('perfiles').select('id, username, vidas').order('vidas', { ascending: false });
-        const { data: selecciones } = await supabaseClient
-            .from('selecciones').select('*, equipos_ligamx(nombre)');
+        const tablaResp = await fetch(RENDER_URL + '/api/tabla-global');
+        const tablaData = await tablaResp.json();
+
+        if (!tablaData.success) {
+            console.error('Error al cargar tabla global:', tablaData.error);
+            return;
+        }
+
+        const perfiles = tablaData.perfiles || [];
+        const selecciones = tablaData.selecciones || [];
 
         const cuerpo = document.getElementById('cuerpo-survivor');
         const header = document.getElementById('header-jornadas');
@@ -746,10 +765,10 @@
     }
 
     async function cargarUsuariosAdmin() {
-        var { data: perfiles } = await supabaseClient
-            .from('perfiles')
-            .select('id, username')
-            .order('username');
+        const tablaResp = await fetch(RENDER_URL + '/api/tabla-global');
+        const tablaData = await tablaResp.json();
+
+        const perfiles = tablaData.success ? tablaData.perfiles : [];
 
         var select = document.getElementById('admin-usuario-select');
         select.innerHTML = '<option value="">Selecciona usuario...</option>';
@@ -771,24 +790,24 @@
 
         if (!userId) return;
 
-        var { data: selecciones } = await supabaseClient
-            .from('selecciones')
-            .select('jornada, estatus, equipos_ligamx(nombre)')
-            .eq('user_id', userId)
-            .order('jornada');
+        const tablaResp = await fetch(RENDER_URL + '/api/tabla-global');
+        const tablaData = await tablaResp.json();
 
-        if (!selecciones || selecciones.length === 0) {
+        const selecciones = tablaData.success ? tablaData.selecciones : [];
+        const seleccionesUsuario = selecciones.filter(s => s.user_id === userId);
+
+        if (!seleccionesUsuario || seleccionesUsuario.length === 0) {
             selectJornada.innerHTML = '<option value="">Sin selecciones</option>';
             return;
         }
 
-        selecciones.forEach(function(s) {
+        seleccionesUsuario.forEach(function(s) {
             var equipo = s.equipos_ligamx ? s.equipos_ligamx.nombre : 'Sin equipo';
             selectJornada.innerHTML += '<option value="' + s.jornada + '">J' + s.jornada + ' - ' + equipo + ' (' + s.estatus + ')</option>';
         });
 
         selectJornada.onchange = function() {
-            var sel = selecciones.find(function(s) { return s.jornada == selectJornada.value; });
+            var sel = seleccionesUsuario.find(function(s) { return s.jornada == selectJornada.value; });
             if (sel) {
                 var equipo = sel.equipos_ligamx ? sel.equipos_ligamx.nombre : 'Sin equipo';
                 info.innerText = 'Selección: ' + equipo + ' - Estatus: ' + sel.estatus;
@@ -816,7 +835,7 @@
                 method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + (await supabaseClient.auth.getSession()).data.session?.access_token
+                    'Authorization': 'Bearer ' + authToken
                 },
                 body: JSON.stringify({
                     userId: userId,
@@ -883,7 +902,7 @@
 
     async function resetearTorneo() {
         var fb = document.getElementById('admin-reset-feedback');
-        
+
         if (!confirm('⚠️ ESTÁS A PUNTO DE BORRAR TODOS LOS DATOS DEL TORNEO\n\nEsta acción:\n- Borrará todas las selecciones\n- Borrará todos los resultados\n- Borrará todas las jornadas\n- Borrará todos los equipos\n- Borrará todos los usuarios EXCEPTO el admin\n\n¿ESTÁS SEGURO?')) {
             return;
         }
@@ -900,7 +919,7 @@
                 method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + (await supabaseClient.auth.getSession()).data.session?.access_token
+                    'Authorization': 'Bearer ' + authToken
                 }
             });
 
@@ -912,7 +931,7 @@
             } else if (data.success) {
                 fb.innerText = '✅ Torneo reseteado correctamente. Tablas borradas: ' + Object.keys(data.resultados).join(', ');
                 fb.style.color = '#00c853';
-                
+
                 // Recargar la página después de 2 segundos
                 setTimeout(() => {
                     window.location.reload();

@@ -472,6 +472,155 @@ def verificar_jornada():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+# Endpoints para reemplazar el uso directo de Supabase en el frontend
+
+@app.route('/api/user/perfil', methods=['GET', 'OPTIONS'])
+def get_user_perfil():
+    """Obtener el perfil del usuario autenticado"""
+    if request.method == 'OPTIONS':
+        return '', 200
+    
+    try:
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token no proporcionado'}), 401
+        
+        token = auth_header.split(' ')[1]
+        
+        # Decodificar token para obtener user_id
+        try:
+            decoded_token = jwt.decode(token, options={"verify_signature": False})
+            user_id = decoded_token.get('user_id')
+        except Exception:
+            return jsonify({'error': 'Token inválido'}), 401
+        
+        # Obtener perfil de Supabase
+        result = supabase_admin.table('perfiles').select('*').eq('id', user_id).maybe_single().execute()
+        
+        if hasattr(result, 'error') and result.error:
+            return jsonify({'error': str(result.error)}), 500
+        
+        return jsonify({'success': True, 'perfil': result.data})
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/equipos', methods=['GET'])
+def get_equipos():
+    """Obtener todos los equipos disponibles"""
+    try:
+        result = supabase_admin.table('equipos_ligamx').select('*').execute()
+        
+        if hasattr(result, 'error') and result.error:
+            return jsonify({'error': str(result.error)}), 500
+        
+        return jsonify({'success': True, 'equipos': result.data})
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/selecciones', methods=['POST', 'OPTIONS'])
+def save_seleccion():
+    """Guardar una selección de equipo para una jornada"""
+    if request.method == 'OPTIONS':
+        return '', 200
+    
+    try:
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token no proporcionado'}), 401
+        
+        token = auth_header.split(' ')[1]
+        
+        try:
+            decoded_token = jwt.decode(token, options={"verify_signature": False})
+            user_id = decoded_token.get('user_id')
+        except Exception:
+            return jsonify({'error': 'Token inválido'}), 401
+        
+        data = request.get_json()
+        equipo_id = data.get('equipo_id')
+        jornada = data.get('jornada')
+        
+        if not equipo_id or not jornada:
+            return jsonify({'error': 'Faltan equipo_id y jornada'}), 400
+        
+        # Verificar si ya existe selección para esta jornada
+        existing = supabase_admin.table('selecciones').select('*').eq('user_id', user_id).eq('jornada', jornada).maybe_single().execute()
+        
+        if existing.data:
+            return jsonify({'error': 'Ya tienes una selección para esta jornada'}), 400
+        
+        # Insertar nueva selección
+        result = supabase_admin.table('selecciones').insert({
+            'user_id': user_id,
+            'equipo_id': equipo_id,
+            'jornada': jornada,
+            'estatus': 'pendiente'
+        }).execute()
+        
+        if hasattr(result, 'error') and result.error:
+            return jsonify({'error': str(result.error)}), 500
+        
+        return jsonify({'success': True, 'message': 'Selección guardada correctamente'})
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/selecciones/user', methods=['GET', 'OPTIONS'])
+def get_user_selecciones():
+    """Obtener todas las selecciones del usuario autenticado"""
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    try:
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token no proporcionado'}), 401
+
+        token = auth_header.split(' ')[1]
+
+        try:
+            decoded_token = jwt.decode(token, options={"verify_signature": False})
+            user_id = decoded_token.get('user_id')
+        except Exception:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        result = supabase_admin.table('selecciones').select('*').eq('user_id', user_id).execute()
+
+        if hasattr(result, 'error') and result.error:
+            return jsonify({'error': str(result.error)}), 500
+
+        return jsonify({'success': True, 'selecciones': result.data})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/tabla-global', methods=['GET'])
+def get_tabla_global():
+    """Obtener la tabla global de supervivencia"""
+    try:
+        # Obtener perfiles
+        perfiles_result = supabase_admin.table('perfiles').select('id, username, vidas').order('vidas', desc=True).execute()
+        
+        # Obtener selecciones con nombres de equipos
+        selecciones_result = supabase_admin.table('selecciones').select('*, equipos_ligamx(nombre)').execute()
+        
+        if hasattr(perfiles_result, 'error') and perfiles_result.error:
+            return jsonify({'error': str(perfiles_result.error)}), 500
+        
+        if hasattr(selecciones_result, 'error') and selecciones_result.error:
+            return jsonify({'error': str(selecciones_result.error)}), 500
+        
+        return jsonify({
+            'success': True,
+            'perfiles': perfiles_result.data,
+            'selecciones': selecciones_result.data
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
