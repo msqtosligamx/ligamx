@@ -294,8 +294,7 @@
             const { data: seleccionesUsuario } = await supabaseClient
                 .from('selecciones')
                 .select('equipo_id')
-                .eq('user_id', userActual.id)
-                .neq('estatus', 'fallo');
+                .eq('user_id', userActual.id);
 
             console.log('Selecciones del usuario:', seleccionesUsuario?.length || 0);
 
