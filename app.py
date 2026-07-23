@@ -479,43 +479,64 @@ def get_user_perfil():
     """Obtener el perfil del usuario autenticado"""
     if request.method == 'OPTIONS':
         return '', 200
-    
+
     try:
         auth_header = request.headers.get('Authorization')
         if not auth_header or not auth_header.startswith('Bearer '):
             return jsonify({'error': 'Token no proporcionado'}), 401
-        
+
         token = auth_header.split(' ')[1]
-        
-        # Decodificar token para obtener user_id
+
+        # Decodificar token para obtener user_id y email
         try:
             decoded_token = jwt.decode(token, options={"verify_signature": False})
             user_id = decoded_token.get('user_id')
+            user_email = decoded_token.get('email')
         except Exception:
             return jsonify({'error': 'Token inválido'}), 401
-        
+
         # Obtener perfil de Supabase
         result = supabase_admin.table('perfiles').select('*').eq('id', user_id).maybe_single().execute()
-        
+
         if hasattr(result, 'error') and result.error:
             return jsonify({'error': str(result.error)}), 500
-        
+
+        # Si no existe el perfil, crearlo
+        if not result.data:
+            try:
+                new_result = supabase_admin.table('perfiles').insert({
+                    "id": user_id,
+                    "username": user_email,
+                    "vidas": 3,
+                    "eliminado": False
+                }).select('*').single().execute()
+
+                if hasattr(new_result, 'error') and new_result.error:
+                    return jsonify({'error': str(new_result.error)}), 500
+
+                return jsonify({'success': True, 'perfil': new_result.data})
+            except Exception as e:
+                return jsonify({'error': f'Error al crear perfil: {str(e)}'}), 500
+
         return jsonify({'success': True, 'perfil': result.data})
-        
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/equipos', methods=['GET'])
+@app.route('/api/equipos', methods=['GET', 'OPTIONS'])
 def get_equipos():
     """Obtener todos los equipos disponibles"""
+    if request.method == 'OPTIONS':
+        return '', 200
+
     try:
         result = supabase_admin.table('equipos_ligamx').select('*').execute()
-        
+
         if hasattr(result, 'error') and result.error:
             return jsonify({'error': str(result.error)}), 500
-        
+
         return jsonify({'success': True, 'equipos': result.data})
-        
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -596,28 +617,31 @@ def get_user_selecciones():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/tabla-global', methods=['GET'])
+@app.route('/api/tabla-global', methods=['GET', 'OPTIONS'])
 def get_tabla_global():
     """Obtener la tabla global de supervivencia"""
+    if request.method == 'OPTIONS':
+        return '', 200
+
     try:
         # Obtener perfiles
         perfiles_result = supabase_admin.table('perfiles').select('id, username, vidas').order('vidas', desc=True).execute()
-        
+
         # Obtener selecciones con nombres de equipos
         selecciones_result = supabase_admin.table('selecciones').select('*, equipos_ligamx(nombre)').execute()
-        
+
         if hasattr(perfiles_result, 'error') and perfiles_result.error:
             return jsonify({'error': str(perfiles_result.error)}), 500
-        
+
         if hasattr(selecciones_result, 'error') and selecciones_result.error:
             return jsonify({'error': str(selecciones_result.error)}), 500
-        
+
         return jsonify({
             'success': True,
             'perfiles': perfiles_result.data,
             'selecciones': selecciones_result.data
         })
-        
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
