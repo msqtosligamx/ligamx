@@ -10,6 +10,15 @@ from supabase import create_client, Client
 app = Flask(__name__)
 CORS(app)  # Permitir llamadas desde el frontend
 
+# --- Cache simple para no golpear TheSportsDB en cada request ---
+# Guardamos en memoria la última respuesta de eventsnextleague.php junto
+# con la hora en que la guardamos. Si alguien pide la jornada actual antes
+# de que pase CACHE_SEGUNDOS, le regresamos lo guardado en vez de llamar
+# a la API externa otra vez. Esto es lo más simple que existe: un
+# diccionario normal de Python, nada de librerías extra.
+_cache_proximos_partidos = {"datos": None, "guardado_en": 0}
+CACHE_SEGUNDOS = 300  # 5 minutos
+
 # Configuración Supabase con SERVICE ROLE KEY.
 # Estas dos llaves YA NO están escritas aquí. Se leen desde variables de entorno
 # que configuras en Render (Settings -> Environment). Si por alguna razón no
@@ -201,6 +210,29 @@ if not JWT_SECRET:
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "greenday_115@hotmail.com")
 
 
+def obtener_proximos_partidos_cacheados():
+    """
+    Regresa la lista de próximos partidos de eventsnextleague.php.
+    Si ya la pedimos hace menos de CACHE_SEGUNDOS, regresa la copia
+    guardada en memoria en vez de volver a llamar a TheSportsDB.
+    """
+    ahora = time.time()
+    edad_cache = ahora - _cache_proximos_partidos["guardado_en"]
+
+    if _cache_proximos_partidos["datos"] is not None and edad_cache < CACHE_SEGUNDOS:
+        return _cache_proximos_partidos["datos"]
+
+    url_next = f"{THESPORTSDB_BASE}/eventsnextleague.php"
+    resp_next = requests.get(url_next, params={"id": LIGA_MX_ID}, timeout=10)
+    resp_next.raise_for_status()
+    proximos = resp_next.json().get("events") or []
+
+    _cache_proximos_partidos["datos"] = proximos
+    _cache_proximos_partidos["guardado_en"] = ahora
+
+    return proximos
+
+
 @app.route('/api/calendario-ligamx')
 def obtener_calendario():
     """
@@ -216,10 +248,7 @@ def obtener_calendario():
     """
     try:
         # 1. Próximos partidos (para detectar jornada y temporada actuales)
-        url_next = f"{THESPORTSDB_BASE}/eventsnextleague.php"
-        resp_next = requests.get(url_next, params={"id": LIGA_MX_ID}, timeout=10)
-        resp_next.raise_for_status()
-        proximos = resp_next.json().get("events") or []
+        proximos = obtener_proximos_partidos_cacheados()
 
         if not proximos:
             return jsonify({
@@ -227,8 +256,18 @@ def obtener_calendario():
                 "error": "TheSportsDB no tiene partidos próximos cargados todavía."
             }), 502
 
-        jornada = proximos[0]["intRound"]
-        temporada = proximos[0]["strSeason"]
+        # Igual que en /api/jornada-actual: usamos la jornada más repetida,
+        # no la del primer partido, para evitar quedarnos pegados por un
+        # partido reprogramado de una jornada vieja.
+        conteo_jornadas = {}
+        for partido in proximos:
+            r = partido["intRound"]
+            conteo_jornadas[r] = conteo_jornadas.get(r, 0) + 1
+
+        jornada = max(conteo_jornadas, key=conteo_jornadas.get)
+        temporada = next(
+            p["strSeason"] for p in proximos if p["intRound"] == jornada
+        )
 
         # 2. Todos los partidos de esa jornada
         url_round = f"{THESPORTSDB_BASE}/eventsround.php"
@@ -653,11 +692,7 @@ def obtener_jornada_actual():
     Este endpoint es más preciso para detectar la jornada actual que eventsseason.php
     """
     try:
-        # Usar eventsnextleague.php para obtener la jornada actual
-        url_next = f"{THESPORTSDB_BASE}/eventsnextleague.php"
-        resp_next = requests.get(url_next, params={"id": LIGA_MX_ID}, timeout=10)
-        resp_next.raise_for_status()
-        proximos = resp_next.json().get("events") or []
+        proximos = obtener_proximos_partidos_cacheados()
         
         if not proximos:
             return jsonify({
@@ -665,9 +700,23 @@ def obtener_jornada_actual():
                 "error": "TheSportsDB no tiene próximos partidos cargados todavía."
             }), 502
         
-        # La jornada detectada es la del primer partido
-        jornada = proximos[0]["intRound"]
-        temporada = proximos[0]["strSeason"]
+        # No confiamos en el primer partido de la lista, porque a veces hay
+        # un partido reprogramado de una jornada VIEJA que aparece primero
+        # (ej. un partido pospuesto de la Jornada 1 que se juega después de
+        # la Jornada 3). En vez de eso, contamos cuántas veces se repite cada
+        # jornada entre los próximos partidos y usamos la más común, que es
+        # la jornada "real" que está por jugarse completa.
+        conteo_jornadas = {}
+        for partido in proximos:
+            r = partido["intRound"]
+            conteo_jornadas[r] = conteo_jornadas.get(r, 0) + 1
+
+        jornada = max(conteo_jornadas, key=conteo_jornadas.get)
+
+        # Tomamos la temporada del primer partido que sí sea de esa jornada
+        temporada = next(
+            p["strSeason"] for p in proximos if p["intRound"] == jornada
+        )
         
         return jsonify({
             "success": True,

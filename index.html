@@ -354,7 +354,21 @@
     var jornadaSiguiente = null;
 
     async function detectarJornadaSiguiente() {
-        var roundActual = await detectarRoundActual();
+        // roundActual, el perfil (vidas) y las selecciones del usuario no
+        // dependen unos de otros, así que los pedimos los 3 al mismo tiempo
+        // con Promise.all en vez de esperar uno tras otro. Esto ahorra
+        // varios segundos, sobre todo cuando el servidor de Render acaba
+        // de despertar y todo está lento.
+        const [roundActual, perfilResp, seleccionesResp] = await Promise.all([
+            detectarRoundActual(),
+            fetch(RENDER_URL + '/api/user/perfil', {
+                headers: { 'Authorization': 'Bearer ' + authToken }
+            }),
+            fetch(RENDER_URL + '/api/selecciones/user', {
+                headers: { 'Authorization': 'Bearer ' + authToken }
+            })
+        ]);
+
         jornadaSiguiente = roundActual;
 
         var label = document.getElementById('jornada-label');
@@ -367,9 +381,6 @@
         label.style.fontSize = '18px';
 
         // Verificar si el usuario tiene vidas antes de continuar
-        const perfilResp = await fetch(RENDER_URL + '/api/user/perfil', {
-            headers: { 'Authorization': 'Bearer ' + authToken }
-        });
         const perfilData = await perfilResp.json();
 
         if (!perfilData.success || !perfilData.perfil || perfilData.perfil.vidas <= 0 || perfilData.perfil.eliminado) {
@@ -392,9 +403,7 @@
         }
 
         // Verificar si ya eligió para esta jornada
-        const seleccionesResp = await fetch(RENDER_URL + '/api/selecciones/user', {
-            headers: { 'Authorization': 'Bearer ' + authToken }
-        });
+        // (seleccionesResp ya se pidió en paralelo más arriba)
         const seleccionesData = await seleccionesResp.json();
 
         const seleccionesUsuario = seleccionesData.success ? seleccionesData.selecciones : [];
