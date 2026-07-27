@@ -646,6 +646,47 @@ def get_tabla_global():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/jornada-actual')
+def obtener_jornada_actual():
+    """
+    Endpoint para obtener la jornada actual usando eventsnextleague.php
+    Este endpoint es más preciso para detectar la jornada actual que eventsseason.php
+    """
+    try:
+        # Usar eventsnextleague.php para obtener la jornada actual
+        url_next = f"{THESPORTSDB_BASE}/eventsnextleague.php"
+        resp_next = requests.get(url_next, params={"id": LIGA_MX_ID}, timeout=10)
+        resp_next.raise_for_status()
+        proximos = resp_next.json().get("events") or []
+        
+        if not proximos:
+            return jsonify({
+                "success": False,
+                "error": "TheSportsDB no tiene próximos partidos cargados todavía."
+            }), 502
+        
+        # La jornada detectada es la del primer partido
+        jornada = proximos[0]["intRound"]
+        temporada = proximos[0]["strSeason"]
+        
+        return jsonify({
+            "success": True,
+            "jornada": jornada,
+            "temporada": temporada
+        })
+        
+    except requests.exceptions.RequestException as e:
+        return jsonify({
+            "success": False,
+            "error": f"No se pudo consultar TheSportsDB: {e}"
+        }), 503
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)

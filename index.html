@@ -632,9 +632,32 @@
         }
     }
 
-    // Detectar jornada actual buscando el round que tenga partidos
-    // y cuya fecha más reciente sea >= hoy GMT-6 (jornada próxima o actual)
+    // Detectar jornada actual usando el nuevo endpoint /api/jornada-actual
+    // que usa eventsnextleague.php (más preciso que eventsseason.php)
     async function detectarRoundActual() {
+        try {
+            // Usar el nuevo endpoint que usa eventsnextleague.php
+            var url = RENDER_URL + '/api/jornada-actual';
+            var response = await fetch(url);
+            var data = await response.json();
+            
+            if (data.success) {
+                console.log('Jornada detectada:', data.jornada);
+                return data.jornada;
+            } else {
+                console.error('Error al detectar jornada:', data.error);
+                // Fallback: usar el método anterior
+                return await detectarRoundActualFallback();
+            }
+        } catch (e) {
+            console.error('Error al detectar jornada:', e);
+            // Fallback: usar el método anterior
+            return await detectarRoundActualFallback();
+        }
+    }
+
+    // Método original como fallback
+    async function detectarRoundActualFallback() {
         var ahoraUTC = new Date();
         var roundActual = 1; // fallback: jornada 1 (inicio del torneo)
         var todos = await fetchTemporadaCompleta();
