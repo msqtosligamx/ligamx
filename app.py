@@ -608,6 +608,9 @@ def save_seleccion():
         # Verificar si ya existe selección para esta jornada
         existing = supabase_admin.table('selecciones').select('*').eq('user_id', user_id).eq('jornada', jornada).execute()
         
+        if existing is None or (hasattr(existing, 'error') and existing.error):
+            return jsonify({'error': 'Error al verificar selecciones existentes'}), 500
+        
         if existing.data:
             return jsonify({'error': 'Ya tienes una selección para esta jornada'}), 400
         
