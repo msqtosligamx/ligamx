@@ -535,7 +535,7 @@ def get_user_perfil():
             return jsonify({'error': 'Token inválido'}), 401
 
         # Obtener perfil de Supabase
-        result = supabase_admin.table('perfiles').select('*').eq('id', user_id).maybe_single().execute()
+        result = supabase_admin.table('perfiles').select('*').eq('id', user_id).execute()
 
         if hasattr(result, 'error') and result.error:
             return jsonify({'error': str(result.error)}), 500
@@ -557,7 +557,7 @@ def get_user_perfil():
             except Exception as e:
                 return jsonify({'error': f'Error al crear perfil: {str(e)}'}), 500
 
-        return jsonify({'success': True, 'perfil': result.data})
+        return jsonify({'success': True, 'perfil': result.data[0]})
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -606,7 +606,7 @@ def save_seleccion():
             return jsonify({'error': 'Faltan equipo_id y jornada'}), 400
         
         # Verificar si ya existe selección para esta jornada
-        existing = supabase_admin.table('selecciones').select('*').eq('user_id', user_id).eq('jornada', jornada).maybe_single().execute()
+        existing = supabase_admin.table('selecciones').select('*').eq('user_id', user_id).eq('jornada', jornada).execute()
         
         if existing.data:
             return jsonify({'error': 'Ya tienes una selección para esta jornada'}), 400
