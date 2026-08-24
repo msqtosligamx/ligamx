@@ -10,6 +10,14 @@ from supabase import create_client, Client
 app = Flask(__name__)
 CORS(app)  # Permitir llamadas desde el frontend
 
+# Agregar headers para evitar caché en todas las respuestas
+@app.after_request
+def add_no_cache_headers(response):
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
 # --- Cache simple para no golpear TheSportsDB en cada request ---
 # Guardamos en memoria la última respuesta de eventsnextleague.php junto
 # con la hora en que la guardamos. Si alguien pide la jornada actual antes
