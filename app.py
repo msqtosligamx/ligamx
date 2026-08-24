@@ -219,9 +219,14 @@ def obtener_proximos_partidos_cacheados():
     ahora = time.time()
     edad_cache = ahora - _cache_proximos_partidos["guardado_en"]
 
-    if _cache_proximos_partidos["datos"] is not None and edad_cache < CACHE_SEGUNDOS:
+    # Reducir el tiempo de cache a 60 segundos para tener datos más frescos
+    CACHE_SEGUNDOS_ACTUAL = 60
+
+    if _cache_proximos_partidos["datos"] is not None and edad_cache < CACHE_SEGUNDOS_ACTUAL:
+        print(f"DEBUG: Usando cache (edad: {edad_cache:.0f}s)")
         return _cache_proximos_partidos["datos"]
 
+    print(f"DEBUG: Cache expirado o vacío, llamando a TheSportsDB")
     url_next = f"{THESPORTSDB_BASE}/eventsnextleague.php"
     resp_next = requests.get(url_next, params={"id": LIGA_MX_ID}, timeout=10)
     resp_next.raise_for_status()
@@ -230,6 +235,7 @@ def obtener_proximos_partidos_cacheados():
     _cache_proximos_partidos["datos"] = proximos
     _cache_proximos_partidos["guardado_en"] = ahora
 
+    print(f"DEBUG: Cache actualizado con {len(proximos)} partidos")
     return proximos
 
 
@@ -703,6 +709,11 @@ def obtener_jornada_actual():
                 "error": "TheSportsDB no tiene próximos partidos cargados todavía."
             }), 502
         
+        # DEBUG: Imprimir información de los partidos para diagnóstico
+        print(f"DEBUG: Total partidos recibidos: {len(proximos)}")
+        for partido in proximos[:5]:  # Primeros 5 partidos
+            print(f"DEBUG: Partido: {partido.get('strEvent')} - Jornada: {partido.get('intRound')} - Fecha: {partido.get('dateEvent')}")
+        
         # No confiamos en el primer partido de la lista, porque a veces hay
         # un partido reprogramado de una jornada VIEJA que aparece primero
         # (ej. un partido pospuesto de la Jornada 1 que se juega después de
@@ -714,6 +725,7 @@ def obtener_jornada_actual():
             r = partido["intRound"]
             conteo_jornadas[r] = conteo_jornadas.get(r, 0) + 1
 
+        print(f"DEBUG: Conteo de jornadas: {conteo_jornadas}")
         jornada = max(conteo_jornadas, key=conteo_jornadas.get)
 
         # Tomamos la temporada del primer partido que sí sea de esa jornada
@@ -721,10 +733,24 @@ def obtener_jornada_actual():
             p["strSeason"] for p in proximos if p["intRound"] == jornada
         )
         
+        print(f"DEBUG: Jornada detectada: {jornada}, Temporada: {temporada}")
+        
         return jsonify({
             "success": True,
             "jornada": jornada,
-            "temporada": temporada
+            "temporada": temporada,
+            "debug": {
+                "total_partidos": len(proximos),
+                "conteo_jornadas": conteo_jornadas,
+                "primeros_partidos": [
+                    {
+                        "partido": p.get("strEvent"),
+                        "jornada": p.get("intRound"),
+                        "fecha": p.get("dateEvent")
+                    }
+                    for p in proximos[:5]
+                ]
+            }
         })
         
     except requests.exceptions.RequestException as e:

@@ -649,10 +649,18 @@
             var url = RENDER_URL + '/api/jornada-actual';
             var response = await fetch(url);
             var data = await response.json();
-            
+
             if (data.success) {
-                console.log('Jornada detectada:', data.jornada);
-                return data.jornada;
+                var jornada = parseInt(data.jornada);
+                console.log('Jornada detectada:', jornada);
+
+                // Validar que la jornada esté en un rango razonable (1-17)
+                if (jornada >= 1 && jornada <= 17) {
+                    return jornada;
+                } else {
+                    console.warn('Jornada fuera de rango:', jornada, '- usando fallback');
+                    return await detectarRoundActualFallback();
+                }
             } else {
                 console.error('Error al detectar jornada:', data.error);
                 // Fallback: usar el método anterior
@@ -668,10 +676,11 @@
     // Método original como fallback
     async function detectarRoundActualFallback() {
         var ahoraUTC = new Date();
-        var roundActual = 1; // fallback: jornada 1 (inicio del torneo)
+        var roundActual = 7; // Fallback: jornada 7 (según fecha actual agosto 2026)
         var todos = await fetchTemporadaCompleta();
 
         if (todos.length === 0) {
+            console.warn('Temporada vacía, usando jornada por defecto:', roundActual);
             return roundActual;
         }
 
@@ -695,6 +704,7 @@
                 }
             }
         }
+        console.warn('Fallback detectó jornada:', roundActual);
         return roundActual;
     }
 
