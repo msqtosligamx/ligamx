@@ -616,8 +616,8 @@ def get_usuarios_pendientes():
         except Exception:
             return jsonify({'error': 'Token inválido'}), 401
 
-        # Obtener usuarios pendientes de aprobación
-        result = supabase_admin.table('perfiles').select('id, username, created_at').eq('aprobado', False).execute()
+        # Obtener usuarios pendientes de aprobación (sin created_at que no existe)
+        result = supabase_admin.table('perfiles').select('id, username').eq('aprobado', False).execute()
 
         if hasattr(result, 'error') and result.error:
             return jsonify({'error': str(result.error)}), 500

@@ -262,9 +262,24 @@
         const equiposResp = await fetch(RENDER_URL + '/api/equipos');
         const equiposData = await equiposResp.json();
 
+        // Obtener selecciones del usuario para filtrar equipos ya usados
+        const seleccionesResp = await fetch(RENDER_URL + '/api/selecciones/user', {
+            headers: { 'Authorization': 'Bearer ' + authToken }
+        });
+        const seleccionesData = await seleccionesResp.json();
+
         if (equiposData.success && equiposData.equipos) {
             const select = document.getElementById('team-select');
-            select.innerHTML = equiposData.equipos.map(e => "<option value='" + e.id + "'>" + e.nombre + "</option>").join('');
+
+            // Obtener IDs de equipos ya seleccionados
+            const equiposUsados = seleccionesData.success ? seleccionesData.selecciones.map(s => s.equipo_id) : [];
+
+            // Filtrar equipos ya usados y ordenar alfabéticamente
+            const equiposDisponibles = equiposData.equipos
+                .filter(e => !equiposUsados.includes(e.id))
+                .sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+            select.innerHTML = equiposDisponibles.map(e => "<option value='" + e.id + "'>" + e.nombre + "</option>").join('');
         }
 
         await Promise.all([
@@ -317,10 +332,10 @@
 
             console.log('Equipos usados IDs:', Array.from(equiposUsadosIds));
 
-            // Filtrar equipos no usados
-            const equiposDisponibles = todosEquipos.filter(
-                equipo => !equiposUsadosIds.has(equipo.id)
-            );
+            // Filtrar equipos no usados y ordenar alfabéticamente
+            const equiposDisponibles = todosEquipos
+                .filter(equipo => !equiposUsadosIds.has(equipo.id))
+                .sort((a, b) => a.nombre.localeCompare(b.nombre));
 
             console.log('Equipos disponibles:', equiposDisponibles.length);
 
@@ -856,11 +871,10 @@
             }
 
             list.innerHTML = data.usuarios.map(function(u) {
-                var fecha = u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A';
                 return '<div style="background:#333; padding:10px; margin:5px 0; border-radius:5px; display:flex; justify-content:space-between; align-items:center;">'
                     + '<div>'
                     + '<p style="margin:0; font-size:13px; color:white;">' + (u.username || u.id) + '</p>'
-                    + '<p style="margin:0; font-size:11px; color:#aaa;">Registrado: ' + fecha + '</p>'
+                    + '<p style="margin:0; font-size:11px; color:#aaa;">ID: ' + u.id + '</p>'
                     + '</div>'
                     + '<div style="display:flex; gap:5px;">'
                     + '<button onclick="aprobarUsuario(\'' + u.id + '\')" style="padding:5px 10px; background:#00c853; color:white; border:none; border-radius:3px; cursor:pointer; font-size:12px;">✓ Aprobar</button>'
