@@ -106,6 +106,17 @@
             </button>
             <p id="admin-borrar-feedback" style="color:#aaa;"></p>
 
+            <hr style="margin:15px 0; border-color:#555;">
+            <p style="color:#aaa; font-size:13px; margin-bottom:8px;">Gestión de usuarios pendientes de aprobación:</p>
+            <button class="btn-full" style="background:#2196f3; color:white; margin-bottom:10px;"
+                onclick="cargarUsuariosPendientes()">
+                📋 CARGAR USUARIOS PENDIENTES
+            </button>
+            <div id="usuarios-pendientes-list" style="margin:10px 0; max-height:200px; overflow-y:auto;">
+                <p style="color:#aaa; font-size:13px;">Haz clic en "Cargar usuarios pendientes" para ver la lista.</p>
+            </div>
+            <p id="admin-aprobacion-feedback" style="color:#aaa;"></p>
+
             </div>
 
         <hr style="margin:30px 0;">
@@ -163,6 +174,12 @@
                 btn.innerText = "Cargando juego...";
                 await iniciarJuego();
             } else {
+                // Si el error es por falta de aprobación, mostrar mensaje específico
+                if (loginResp.status === 403) {
+                    alert(loginData.error || "Tu cuenta aún no ha sido aprobada por el administrador.");
+                    return;
+                }
+
                 // Si falla el login, intentar registro
                 btn.innerText = "Registrando...";
                 const registerResp = await fetch(RENDER_URL + '/api/auth/register', {
@@ -177,23 +194,7 @@
                     return;
                 }
 
-                // Auto-login después de registro
-                btn.innerText = "Iniciando sesión...";
-                loginResp = await fetch(RENDER_URL + '/api/auth/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password })
-                });
-                loginData = await loginResp.json();
-
-                if (loginData.success) {
-                    authToken = loginData.token;
-                    userActual = loginData.user;
-                    btn.innerText = "Cargando juego...";
-                    await iniciarJuego();
-                } else {
-                    alert("Cuenta creada. Inicia sesión con tu correo y contraseña.");
-                }
+                alert(registerData.message || "Cuenta creada. Espera aprobación del administrador.");
             }
 
         } catch (e) {
@@ -826,6 +827,115 @@
         select.onchange = function() {
             cargarJornadasAdmin(this.value);
         };
+    }
+
+    async function cargarUsuariosPendientes() {
+        var fb = document.getElementById('admin-aprobacion-feedback');
+        var list = document.getElementById('usuarios-pendientes-list');
+
+        try {
+            fb.innerText = 'Cargando usuarios pendientes...';
+            fb.style.color = '#aaa';
+
+            var response = await fetch(RENDER_URL + '/api/admin/usuarios-pendientes', {
+                headers: { 'Authorization': 'Bearer ' + authToken }
+            });
+            var data = await response.json();
+
+            if (!data.success) {
+                fb.innerText = 'Error: ' + data.error;
+                fb.style.color = '#ff5252';
+                return;
+            }
+
+            if (data.usuarios.length === 0) {
+                list.innerHTML = '<p style="color:#00c853; font-size:13px;">No hay usuarios pendientes de aprobación.</p>';
+                fb.innerText = '✅ Lista actualizada';
+                fb.style.color = '#00c853';
+                return;
+            }
+
+            list.innerHTML = data.usuarios.map(function(u) {
+                var fecha = u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A';
+                return '<div style="background:#333; padding:10px; margin:5px 0; border-radius:5px; display:flex; justify-content:space-between; align-items:center;">'
+                    + '<div>'
+                    + '<p style="margin:0; font-size:13px; color:white;">' + (u.username || u.id) + '</p>'
+                    + '<p style="margin:0; font-size:11px; color:#aaa;">Registrado: ' + fecha + '</p>'
+                    + '</div>'
+                    + '<div style="display:flex; gap:5px;">'
+                    + '<button onclick="aprobarUsuario(\'' + u.id + '\')" style="padding:5px 10px; background:#00c853; color:white; border:none; border-radius:3px; cursor:pointer; font-size:12px;">✓ Aprobar</button>'
+                    + '<button onclick="rechazarUsuario(\'' + u.id + '\')" style="padding:5px 10px; background:#ff5252; color:white; border:none; border-radius:3px; cursor:pointer; font-size:12px;">✗ Rechazar</button>'
+                    + '</div>'
+                    + '</div>';
+            }).join('');
+
+            fb.innerText = '✅ ' + data.usuarios.length + ' usuario(s) pendiente(s)';
+            fb.style.color = '#00c853';
+
+        } catch (e) {
+            fb.innerText = 'Error: ' + e.message;
+            fb.style.color = '#ff5252';
+        }
+    }
+
+    async function aprobarUsuario(userId) {
+        var fb = document.getElementById('admin-aprobacion-feedback');
+
+        if (!confirm('¿Aprobar este usuario?')) return;
+
+        try {
+            var response = await fetch(RENDER_URL + '/api/admin/aprobar-usuario', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + authToken
+                },
+                body: JSON.stringify({ user_id: userId })
+            });
+            var data = await response.json();
+
+            if (data.success) {
+                fb.innerText = '✅ Usuario aprobado correctamente';
+                fb.style.color = '#00c853';
+                cargarUsuariosPendientes(); // Recargar lista
+            } else {
+                fb.innerText = 'Error: ' + data.error;
+                fb.style.color = '#ff5252';
+            }
+        } catch (e) {
+            fb.innerText = 'Error: ' + e.message;
+            fb.style.color = '#ff5252';
+        }
+    }
+
+    async function rechazarUsuario(userId) {
+        var fb = document.getElementById('admin-aprobacion-feedback');
+
+        if (!confirm('¿Rechazar y eliminar este usuario? Esta acción no se puede deshacer.')) return;
+
+        try {
+            var response = await fetch(RENDER_URL + '/api/admin/rechazar-usuario', {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + authToken
+                },
+                body: JSON.stringify({ user_id: userId })
+            });
+            var data = await response.json();
+
+            if (data.success) {
+                fb.innerText = '✅ Usuario rechazado y eliminado';
+                fb.style.color = '#00c853';
+                cargarUsuariosPendientes(); // Recargar lista
+            } else {
+                fb.innerText = 'Error: ' + data.error;
+                fb.style.color = '#ff5252';
+            }
+        } catch (e) {
+            fb.innerText = 'Error: ' + e.message;
+            fb.style.color = '#ff5252';
+        }
     }
 
     async function cargarJornadasAdmin(userId) {

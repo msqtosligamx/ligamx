@@ -92,8 +92,23 @@ def login_user():
 
                 user = getattr(result, "user", None)
                 session = getattr(result, "session", None)
-                
+
                 if user and session:
+                    # Verificar si el usuario está aprobado
+                    perfil_result = supabase_admin.table('perfiles').select('aprobado').eq('id', user.id).maybe_single().execute()
+
+                    if hasattr(perfil_result, 'error') and perfil_result.error:
+                        return jsonify({"success": False, "error": "Error al verificar perfil"}), 500
+
+                    if not perfil_result.data:
+                        return jsonify({"success": False, "error": "Perfil no encontrado"}), 404
+
+                    if not perfil_result.data.get('aprobado', False):
+                        return jsonify({
+                            "success": False,
+                            "error": "Tu cuenta aún no ha sido aprobada por el administrador."
+                        }), 403
+
                     # Crear token JWT con información del usuario
                     token_payload = {
                         "email": user.email,
@@ -101,7 +116,7 @@ def login_user():
                         "exp": datetime.utcnow() + timedelta(hours=24)
                     }
                     token = jwt.encode(token_payload, JWT_SECRET, algorithm="HS256")
-                    
+
                     return jsonify({
                         "success": True,
                         "message": "Sesión iniciada correctamente",
@@ -157,14 +172,15 @@ def register_user():
                             "id": user.id,
                             "username": email,
                             "vidas": 3,
-                            "eliminado": False
+                            "eliminado": False,
+                            "aprobado": False  # Requiere aprobación del admin
                         }).execute()
                     except Exception:
                         pass  # perfil ya existe; no bloquea el registro
 
                     return jsonify({
                         "success": True,
-                        "message": "Cuenta creada correctamente",
+                        "message": "Cuenta creada correctamente. Espera aprobación del administrador.",
                         "user_id": user.id
                     }), 201
 
@@ -561,7 +577,8 @@ def get_user_perfil():
                     "id": user_id,
                     "username": user_email,
                     "vidas": 3,
-                    "eliminado": False
+                    "eliminado": False,
+                    "aprobado": False
                 }).select('*').single().execute()
 
                 if hasattr(new_result, 'error') and new_result.error:
@@ -572,6 +589,120 @@ def get_user_perfil():
                 return jsonify({'error': f'Error al crear perfil: {str(e)}'}), 500
 
         return jsonify({'success': True, 'perfil': result.data[0]})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/usuarios-pendientes', methods=['GET', 'OPTIONS'])
+def get_usuarios_pendientes():
+    """Obtener lista de usuarios pendientes de aprobación (solo admin)"""
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    try:
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token no proporcionado'}), 401
+
+        token = auth_header.split(' ')[1]
+
+        try:
+            decoded_token = jwt.decode(token, options={"verify_signature": False})
+            user_email = decoded_token.get('email')
+
+            if user_email != ADMIN_EMAIL:
+                return jsonify({'error': 'No autorizado - Solo admin'}), 403
+
+        except Exception:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        # Obtener usuarios pendientes de aprobación
+        result = supabase_admin.table('perfiles').select('id, username, created_at').eq('aprobado', False).execute()
+
+        if hasattr(result, 'error') and result.error:
+            return jsonify({'error': str(result.error)}), 500
+
+        return jsonify({'success': True, 'usuarios': result.data})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/aprobar-usuario', methods=['POST', 'OPTIONS'])
+def aprobar_usuario():
+    """Aprobar un usuario (solo admin)"""
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    try:
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token no proporcionado'}), 401
+
+        token = auth_header.split(' ')[1]
+
+        try:
+            decoded_token = jwt.decode(token, options={"verify_signature": False})
+            user_email = decoded_token.get('email')
+
+            if user_email != ADMIN_EMAIL:
+                return jsonify({'error': 'No autorizado - Solo admin'}), 403
+
+        except Exception:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        data = request.get_json()
+        user_id = data.get('user_id')
+
+        if not user_id:
+            return jsonify({'error': 'Falta user_id'}), 400
+
+        # Actualizar usuario a aprobado
+        result = supabase_admin.table('perfiles').update({'aprobado': True}).eq('id', user_id).execute()
+
+        if hasattr(result, 'error') and result.error:
+            return jsonify({'error': str(result.error)}), 500
+
+        return jsonify({'success': True, 'message': 'Usuario aprobado correctamente'})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/rechazar-usuario', methods=['DELETE', 'OPTIONS'])
+def rechazar_usuario():
+    """Rechazar/eliminar un usuario (solo admin)"""
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    try:
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Token no proporcionado'}), 401
+
+        token = auth_header.split(' ')[1]
+
+        try:
+            decoded_token = jwt.decode(token, options={"verify_signature": False})
+            user_email = decoded_token.get('email')
+
+            if user_email != ADMIN_EMAIL:
+                return jsonify({'error': 'No autorizado - Solo admin'}), 403
+
+        except Exception:
+            return jsonify({'error': 'Token inválido'}), 401
+
+        data = request.get_json()
+        user_id = data.get('user_id')
+
+        if not user_id:
+            return jsonify({'error': 'Falta user_id'}), 400
+
+        # Borrar perfil
+        perfil_result = supabase_admin.table('perfiles').delete().eq('id', user_id).execute()
+
+        # Borrar usuario de auth.users
+        auth_result = supabase_admin.auth.admin.delete_user(user_id)
+
+        return jsonify({'success': True, 'message': 'Usuario rechazado y eliminado correctamente'})
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
