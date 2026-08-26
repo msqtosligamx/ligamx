@@ -243,8 +243,8 @@ def obtener_proximos_partidos_cacheados():
     ahora = time.time()
     edad_cache = ahora - _cache_proximos_partidos["guardado_en"]
 
-    # Reducir el tiempo de cache a 60 segundos para tener datos más frescos
-    CACHE_SEGUNDOS_ACTUAL = 60
+    # Aumentar cache a 10 minutos para reducir llamadas a la API externa
+    CACHE_SEGUNDOS_ACTUAL = 600
 
     if _cache_proximos_partidos["datos"] is not None and edad_cache < CACHE_SEGUNDOS_ACTUAL:
         print(f"DEBUG: Usando cache (edad: {edad_cache:.0f}s)")
