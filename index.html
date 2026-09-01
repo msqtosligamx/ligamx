@@ -224,12 +224,16 @@
         });
         const perfilData = await perfilResp.json();
 
+        let usuarioEliminado = false;
+
         if (perfilData.success && perfilData.perfil) {
             const perfil = perfilData.perfil;
             document.getElementById('vidas-count').innerText = perfil.vidas;
 
             // Verificar si el usuario está eliminado o no tiene vidas
             if (perfil.vidas <= 0 || perfil.eliminado) {
+                usuarioEliminado = true;
+
                 // Mostrar mensaje de eliminado
                 const feedback = document.getElementById('feedback');
                 feedback.innerText = '¡HAS SIDO ELIMINADO! Ya no puedes seleccionar equipos. Revisa la tabla para ver los resultados.';
@@ -254,34 +258,37 @@
                 document.getElementById('vidas-count').style.color = '#ff5252';
 
                 console.log('Usuario eliminado - selección bloqueada');
-                return; // No continuar cargando equipos
+                // No hacemos return: igual necesita ver calendario, tabla y jornada
             }
         }
 
-        // Cargar equipos desde el backend
-        const equiposResp = await fetch(RENDER_URL + '/api/equipos');
-        const equiposData = await equiposResp.json();
+        // Cargar equipos solo si el usuario NO está eliminado (no le sirven de nada)
+        if (!usuarioEliminado) {
+            const equiposResp = await fetch(RENDER_URL + '/api/equipos');
+            const equiposData = await equiposResp.json();
 
-        // Obtener selecciones del usuario para filtrar equipos ya usados
-        const seleccionesResp = await fetch(RENDER_URL + '/api/selecciones/user', {
-            headers: { 'Authorization': 'Bearer ' + authToken }
-        });
-        const seleccionesData = await seleccionesResp.json();
+            // Obtener selecciones del usuario para filtrar equipos ya usados
+            const seleccionesResp = await fetch(RENDER_URL + '/api/selecciones/user', {
+                headers: { 'Authorization': 'Bearer ' + authToken }
+            });
+            const seleccionesData = await seleccionesResp.json();
 
-        if (equiposData.success && equiposData.equipos) {
-            const select = document.getElementById('team-select');
+            if (equiposData.success && equiposData.equipos) {
+                const select = document.getElementById('team-select');
 
-            // Obtener IDs de equipos ya seleccionados
-            const equiposUsados = seleccionesData.success ? seleccionesData.selecciones.map(s => s.equipo_id) : [];
+                // Obtener IDs de equipos ya seleccionados
+                const equiposUsados = seleccionesData.success ? seleccionesData.selecciones.map(s => s.equipo_id) : [];
 
-            // Filtrar equipos ya usados y ordenar alfabéticamente
-            const equiposDisponibles = equiposData.equipos
-                .filter(e => !equiposUsados.includes(e.id))
-                .sort((a, b) => a.nombre.localeCompare(b.nombre));
+                // Filtrar equipos ya usados y ordenar alfabéticamente
+                const equiposDisponibles = equiposData.equipos
+                    .filter(e => !equiposUsados.includes(e.id))
+                    .sort((a, b) => a.nombre.localeCompare(b.nombre));
 
-            select.innerHTML = equiposDisponibles.map(e => "<option value='" + e.id + "'>" + e.nombre + "</option>").join('');
+                select.innerHTML = equiposDisponibles.map(e => "<option value='" + e.id + "'>" + e.nombre + "</option>").join('');
+            }
         }
 
+        // Esto se ejecuta SIEMPRE, esté o no eliminado el usuario
         await Promise.all([
             cargarTablaGlobal(),
             cargarCalendario(),
