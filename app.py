@@ -440,14 +440,15 @@ def delete_seleccion():
     except Exception as e:
         return jsonify({'error': f'Error del servidor: {str(e)}'}), 500
 
-@app.route('/api/test', methods=['GET'])
+@app.route('/api/test', methods=['GET', 'HEAD'])
 def test_endpoint():
-    """Endpoint de prueba para verificar que el servidor funciona"""
+    """Endpoint de prueba para verificar que el servidor funciona (keep-alive)"""
+    # HEAD request no necesita body, es más rápido
+    if request.method == 'HEAD':
+        return '', 200
     return jsonify({
-        'message': 'Endpoint funciona',
-        'server': 'Render',
-        'status': 'OK',
-        'routes': [str(rule) for rule in app.url_map.iter_rules()]
+        'message': 'OK',
+        'status': 'alive'
     })
 
 @app.route('/api/admin/reset-tournament', methods=['DELETE', 'OPTIONS'])
